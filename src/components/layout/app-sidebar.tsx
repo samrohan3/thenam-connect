@@ -20,7 +20,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const nav = [
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/ventures", label: "Ventures", icon: Briefcase },
   { to: "/finance", label: "Finance", icon: Wallet },
@@ -33,7 +34,7 @@ const nav = [
   { to: "/documents", label: "Documents", icon: FolderArchive },
   { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },
-] as const;
+];
 
 export function AppSidebar({
   collapsed,
