@@ -4,7 +4,7 @@ import { ArrowRightLeft, Minus, Plus } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { SectionCard } from "@/components/ui-ext/section-card";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+
 import { FinanceSummaryCards } from "@/components/finance/finance-summary-cards";
 import { TransactionFormModal } from "@/components/finance/transaction-form-modal";
 import { TransferModal, buildTransferPair } from "@/components/finance/transfer-modal";
