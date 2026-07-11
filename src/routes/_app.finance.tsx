@@ -113,6 +113,7 @@ function FinancePage() {
       <TransactionFormModal open={openIn} onOpenChange={setOpenIn} mode="in" onSubmit={addTransaction} />
       <TransactionFormModal open={openOut} onOpenChange={setOpenOut} mode="out" onSubmit={addTransaction} />
       <TransferModal open={openTransfer} onOpenChange={setOpenTransfer} onSubmit={handleTransfer} />
+      <Toaster />
     </PageContainer>
   );
 }
