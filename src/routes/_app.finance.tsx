@@ -1,137 +1,119 @@
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { ArrowUpRight, Send, Wallet, TrendingUp, TrendingDown, PiggyBank } from "lucide-react";
+import { ArrowRightLeft, Minus, Plus } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
-import { StatCard } from "@/components/ui-ext/stat-card";
 import { SectionCard } from "@/components/ui-ext/section-card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
+
+
+import { FinanceSummaryCards } from "@/components/finance/finance-summary-cards";
+import { TransactionFormModal } from "@/components/finance/transaction-form-modal";
+import { TransferModal, buildTransferPair } from "@/components/finance/transfer-modal";
+import { TransactionTable } from "@/components/finance/transaction-table";
+import { FinanceFilters, applyFilters, defaultFilters, type FiltersState } from "@/components/finance/finance-filters";
+import { FinanceCharts } from "@/components/finance/finance-charts";
+import { MonthlySummary } from "@/components/finance/monthly-summary";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { expenseBreakdown, revenueSeries, transactions } from "@/lib/mock-data";
+  computeSummary,
+  initialTransactions,
+  newTransactionId,
+  type Transaction,
+} from "@/lib/finance-data";
 
 export const Route = createFileRoute("/_app/finance")({
   head: () => ({ meta: [{ title: "Finance — Thenam ERP" }] }),
   component: FinancePage,
 });
 
-const chartColors = ["var(--royal)", "var(--emerald)", "var(--gold)", "var(--chart-4)", "var(--chart-5)"];
-
 function FinancePage() {
+  const [txs, setTxs] = useState<Transaction[]>(initialTransactions);
+  const [filters, setFilters] = useState<FiltersState>(defaultFilters);
+  const [openIn, setOpenIn] = useState(false);
+  const [openOut, setOpenOut] = useState(false);
+  const [openTransfer, setOpenTransfer] = useState(false);
+
+  const summary = useMemo(() => computeSummary(txs), [txs]);
+  const filtered = useMemo(() => applyFilters(txs, filters), [txs, filters]);
+
+  function addTransaction(base: Omit<Transaction, "id" | "status">) {
+    const tx: Transaction = { ...base, id: newTransactionId(txs), status: "Completed" };
+    setTxs((prev) => [tx, ...prev]);
+    toast.success(`${tx.type} recorded`, { description: `${tx.id} · $${tx.amount.toLocaleString()}` });
+  }
+
+  function handleTransfer(input: { from: import("@/lib/finance-data").Venture; to: import("@/lib/finance-data").Venture; amount: number; reason: string; username: string; reference?: string; date: string; }) {
+    const idA = newTransactionId(txs);
+    const idB = `TX-${parseInt(idA.replace(/\D/g, ""), 10) + 1}`;
+    const [outTx, inTx] = buildTransferPair({ ...input, idA, idB });
+    setTxs((prev) => [inTx, outTx, ...prev]);
+    toast.success("Transfer completed", { description: `${input.from} → ${input.to} · $${input.amount.toLocaleString()}` });
+  }
+
+  function handleDelete(tx: Transaction) {
+    setTxs((prev) => prev.filter((t) => t.id !== tx.id));
+    toast.message("Transaction deleted", { description: tx.id });
+  }
+
   return (
     <PageContainer>
       <PageHeader
         title="Finance"
-        subtitle="Wallets, revenue, expenses and investment health."
-        actions={
-          <Button className="rounded-xl gradient-emerald text-white gap-1.5">
-            <Send className="h-4 w-4" /> Transfer funds
-          </Button>
-        }
+        subtitle="Wallets, money in and out, and inter-venture transfers across ventures."
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Company Wallet" value="$1.28M" delta="+4.2%" tone="royal" icon={<Wallet className="h-5 w-5" />} index={0} />
-        <StatCard label="Income" value="$402K" delta="+11%" tone="emerald" icon={<TrendingUp className="h-5 w-5" />} index={1} />
-        <StatCard label="Expenses" value="$210K" delta="+3%" tone="gold" icon={<TrendingDown className="h-5 w-5" />} index={2} />
-        <StatCard label="Investments" value="$540K" delta="+7%" tone="royal" icon={<PiggyBank className="h-5 w-5" />} index={3} />
-        <StatCard label="Profit" value="$192K" delta="+9%" tone="emerald" icon={<ArrowUpRight className="h-5 w-5" />} index={4} />
+      <FinanceSummaryCards s={summary} />
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Button className="rounded-xl gradient-emerald text-white gap-1.5" onClick={() => setOpenIn(true)}>
+          <Plus className="h-4 w-4" /> Add Revenue
+        </Button>
+        <Button className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] gap-1.5" onClick={() => setOpenOut(true)}>
+          <Minus className="h-4 w-4" /> Money Out
+        </Button>
+        <Button className="rounded-xl gradient-royal text-white gap-1.5" onClick={() => setOpenTransfer(true)}>
+          <ArrowRightLeft className="h-4 w-4" /> Transfer Between Ventures
+        </Button>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <SectionCard title="Revenue chart" description="Rolling 12 months" className="lg:col-span-2">
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={revenueSeries} margin={{ left: -10, right: 8, top: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="month" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="revenue" fill="var(--royal)" radius={[6,6,0,0]} />
-                <Bar dataKey="expense" fill="var(--gold)" radius={[6,6,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Expense categories" description="This quarter">
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={expenseBreakdown} dataKey="value" nameKey="name" outerRadius={95}>
-                  {expenseBreakdown.map((_, i) => (
-                    <Cell key={i} fill={chartColors[i % chartColors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }} />
-                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
+      <div className="mt-6">
+        <FinanceCharts
+          txs={txs}
+          ventureRevenue={summary.ventureRevenue}
+          categoryExpense={summary.categoryExpense}
+        />
       </div>
 
-      <SectionCard title="Recent transactions" description="Latest movements across all wallets" className="mt-4">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Party</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((t) => (
-                <TableRow key={t.id} className="hover:bg-muted/40">
-                  <TableCell className="font-mono text-xs">{t.id}</TableCell>
-                  <TableCell className="font-medium">{t.party}</TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        t.type === "Income"
-                          ? "bg-emerald/10 text-emerald hover:bg-emerald/10"
-                          : "bg-gold/15 text-[color:var(--gold-foreground)] hover:bg-gold/15"
-                      }
-                    >
-                      {t.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold">
-                    {t.type === "Income" ? "+" : "-"}${t.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{t.date}</TableCell>
-                  <TableCell>
-                    <Badge variant={t.status === "Completed" ? "secondary" : "outline"}>{t.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <MonthlySummary
+        inMonth={summary.inMonth}
+        outMonth={summary.outMonth}
+        monthProfit={summary.monthProfit}
+        topVenture={summary.topVenture}
+        topCategory={summary.topCategory}
+        txThisMonth={summary.txThisMonth}
+      />
+
+      <SectionCard
+        title="Transactions"
+        description={`${filtered.length} of ${txs.length} shown`}
+        className="mt-4"
+      >
+        <div className="mb-4">
+          <FinanceFilters value={filters} onChange={setFilters} />
         </div>
+        <TransactionTable
+          data={filtered}
+          onView={(t) => toast.message(t.id, { description: `${t.type} · ${t.venture} · $${t.amount.toLocaleString()}` })}
+          onEdit={(t) => toast.info("Edit coming soon", { description: t.id })}
+          onDelete={handleDelete}
+        />
       </SectionCard>
+
+      <TransactionFormModal open={openIn} onOpenChange={setOpenIn} mode="in" onSubmit={addTransaction} />
+      <TransactionFormModal open={openOut} onOpenChange={setOpenOut} mode="out" onSubmit={addTransaction} />
+      <TransferModal open={openTransfer} onOpenChange={setOpenTransfer} onSubmit={handleTransfer} />
+      <Toaster />
     </PageContainer>
   );
 }
