@@ -25,14 +25,10 @@ const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/ventures", label: "Ventures", icon: Briefcase },
   { to: "/finance", label: "Finance", icon: Wallet },
-  { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/team", label: "Team", icon: Users },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
-  { to: "/communication", label: "Communication", icon: MessagesSquare },
   { to: "/rewards", label: "Rewards", icon: Trophy },
-  { to: "/documents", label: "Documents", icon: FolderArchive },
-  { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
