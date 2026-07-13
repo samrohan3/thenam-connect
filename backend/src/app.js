@@ -2,25 +2,39 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 
+require('dotenv').config();
+
 const app = express();
 
-// 1. Configure CORS
+// Security Middleware
+app.use(helmet());
 app.use(cors({
-  origin: '*', // Customize this with frontend URL for production
+  origin: process.env.CORS_ORIGIN || '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: 'Too many requests from this IP, please try again later.'
+});
+app.use('/api', limiter);
 
 // 2. Configure Morgan Logger
 const logFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
 app.use(morgan(logFormat));
 
 // 3. Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 4. Static uploads folder configuration
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

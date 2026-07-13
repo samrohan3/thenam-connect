@@ -100,8 +100,65 @@ const getUserProfile = async (req, res, next) => {
   }
 };
 
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.name = req.body.name || user.name;
+    user.phone = req.body.phone || user.phone;
+    
+    // Only allow email change if not taken
+    if (req.body.email && req.body.email.toLowerCase() !== user.email) {
+      const existing = await User.findOne({ email: req.body.email.toLowerCase() });
+      if (existing) return res.status(400).json({ success: false, message: 'Email already exists' });
+      user.email = req.body.email.toLowerCase();
+    }
+
+    const updatedUser = await user.save();
+    return res.json({
+      success: true,
+      data: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        role: updatedUser.role
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// @desc    Change password
+// @route   PUT /api/auth/password
+// @access  Private
+const changePassword = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const { currentPassword, newPassword } = req.body;
+
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+       return res.status(400).json({ success: false, message: 'Incorrect current password' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
-  getUserProfile
+  getUserProfile,
+  updateProfile,
+  changePassword
 };

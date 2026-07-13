@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowRightLeft, Minus, Plus } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
@@ -7,20 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
-
-import { FinanceSummaryCards } from "@/components/finance/finance-summary-cards";
-import { TransactionFormModal } from "@/components/finance/transaction-form-modal";
-import { TransferModal, buildTransferPair } from "@/components/finance/transfer-modal";
-import { TransactionTable } from "@/components/finance/transaction-table";
-import { FinanceFilters, applyFilters, defaultFilters, type FiltersState } from "@/components/finance/finance-filters";
-import { FinanceCharts } from "@/components/finance/finance-charts";
-import { MonthlySummary } from "@/components/finance/monthly-summary";
-import {
-  computeSummary,
-  initialTransactions,
-  newTransactionId,
-  type Transaction,
-} from "@/lib/finance-data";
+import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds } from "@/lib/api-hooks";
 
 export const Route = createFileRoute("/_app/finance")({
   head: () => ({ meta: [{ title: "Finance — Thenam ERP" }] }),
@@ -28,33 +15,25 @@ export const Route = createFileRoute("/_app/finance")({
 });
 
 function FinancePage() {
-  const [txs, setTxs] = useState<Transaction[]>(initialTransactions);
-  const [filters, setFilters] = useState<FiltersState>(defaultFilters);
-  const [openIn, setOpenIn] = useState(false);
-  const [openOut, setOpenOut] = useState(false);
-  const [openTransfer, setOpenTransfer] = useState(false);
+  const { data: summary, isLoading: isSummaryLoading } = useFinanceSummary();
+  const { data: txs, isLoading: isTxsLoading } = useTransactions();
+  
+  const addRevenueMutation = useAddRevenue();
+  const recordExpenseMutation = useRecordExpense();
+  const transferMutation = useTransferFunds();
 
-  const summary = useMemo(() => computeSummary(txs), [txs]);
-  const filtered = useMemo(() => applyFilters(txs, filters), [txs, filters]);
-
-  function addTransaction(base: Omit<Transaction, "id" | "status">) {
-    const tx: Transaction = { ...base, id: newTransactionId(txs), status: "Completed" };
-    setTxs((prev) => [tx, ...prev]);
-    toast.success(`${tx.type} recorded`, { description: `${tx.id} · $${tx.amount.toLocaleString()}` });
-  }
-
-  function handleTransfer(input: { from: import("@/lib/finance-data").Venture; to: import("@/lib/finance-data").Venture; amount: number; reason: string; username: string; reference?: string; date: string; }) {
-    const idA = newTransactionId(txs);
-    const idB = `TX-${parseInt(idA.replace(/\D/g, ""), 10) + 1}`;
-    const [outTx, inTx] = buildTransferPair({ ...input, idA, idB });
-    setTxs((prev) => [inTx, outTx, ...prev]);
-    toast.success("Transfer completed", { description: `${input.from} → ${input.to} · $${input.amount.toLocaleString()}` });
-  }
-
-  function handleDelete(tx: Transaction) {
-    setTxs((prev) => prev.filter((t) => t.id !== tx.id));
-    toast.message("Transaction deleted", { description: tx.id });
-  }
+  const handleAddRevenue = () => {
+     addRevenueMutation.mutate({
+         venture: "some_venture_id", // Would come from form
+         amount: 1000,
+         reason: "Service Payment",
+         method: "Bank Transfer",
+         date: new Date().toISOString(),
+         status: "Completed"
+     }, {
+         onSuccess: () => toast.success("Revenue recorded")
+     });
+  };
 
   return (
     <PageContainer>
@@ -63,57 +42,86 @@ function FinancePage() {
         subtitle="Wallets, money in and out, and inter-venture transfers across ventures."
       />
 
-      <FinanceSummaryCards s={summary} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+          <SectionCard title="Company Wallet" className="bg-slate-900 text-white">
+              <div className="text-3xl font-bold mt-2">
+                  ${summary ? summary.walletBalance.toLocaleString() : "0"}
+              </div>
+          </SectionCard>
+          <SectionCard title="Money In Today" className="bg-slate-900 text-white">
+              <div className="text-3xl font-bold mt-2 text-emerald-400">
+                  ${summary ? summary.inToday.toLocaleString() : "0"}
+              </div>
+          </SectionCard>
+          <SectionCard title="Money Out Today" className="bg-slate-900 text-white">
+              <div className="text-3xl font-bold mt-2 text-rose-400">
+                  ${summary ? summary.outToday.toLocaleString() : "0"}
+              </div>
+          </SectionCard>
+          <SectionCard title="Monthly Profit" className="bg-slate-900 text-white">
+              <div className="text-3xl font-bold mt-2 text-blue-400">
+                  ${summary ? summary.monthProfit.toLocaleString() : "0"}
+              </div>
+          </SectionCard>
+      </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button className="rounded-xl gradient-emerald text-white gap-1.5" onClick={() => setOpenIn(true)}>
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <Button className="rounded-xl gradient-emerald text-white gap-1.5" onClick={() => toast.info("Form coming soon")}>
           <Plus className="h-4 w-4" /> Add Revenue
         </Button>
-        <Button className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] gap-1.5" onClick={() => setOpenOut(true)}>
+        <Button className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] gap-1.5" onClick={() => toast.info("Form coming soon")}>
           <Minus className="h-4 w-4" /> Money Out
         </Button>
-        <Button className="rounded-xl gradient-royal text-white gap-1.5" onClick={() => setOpenTransfer(true)}>
+        <Button className="rounded-xl gradient-royal text-white gap-1.5" onClick={() => toast.info("Form coming soon")}>
           <ArrowRightLeft className="h-4 w-4" /> Transfer Between Ventures
         </Button>
       </div>
 
-      <div className="mt-6">
-        <FinanceCharts
-          txs={txs}
-          ventureRevenue={summary.ventureRevenue}
-          categoryExpense={summary.categoryExpense}
-        />
-      </div>
-
-      <MonthlySummary
-        inMonth={summary.inMonth}
-        outMonth={summary.outMonth}
-        monthProfit={summary.monthProfit}
-        topVenture={summary.topVenture}
-        topCategory={summary.topCategory}
-        txThisMonth={summary.txThisMonth}
-      />
-
       <SectionCard
-        title="Transactions"
-        description={`${filtered.length} of ${txs.length} shown`}
-        className="mt-4"
+        title="Recent Transactions"
+        className="mt-8"
       >
-        <div className="mb-4">
-          <FinanceFilters value={filters} onChange={setFilters} />
-        </div>
-        <TransactionTable
-          data={filtered}
-          onView={(t) => toast.message(t.id, { description: `${t.type} · ${t.venture} · $${t.amount.toLocaleString()}` })}
-          onEdit={(t) => toast.info("Edit coming soon", { description: t.id })}
-          onDelete={handleDelete}
-        />
+        {isTxsLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading transactions...</div>
+        ) : !txs || txs.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+                <div className="w-12 h-12 mx-auto bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                    <ArrowRightLeft className="h-6 w-6 text-slate-400" />
+                </div>
+                No transactions found. Add revenue or record an expense to get started.
+            </div>
+        ) : (
+            <div className="mt-4">
+                <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-muted-foreground uppercase bg-slate-900 border-b border-border">
+                        <tr>
+                            <th className="px-4 py-3">Reference</th>
+                            <th className="px-4 py-3">Type</th>
+                            <th className="px-4 py-3">Amount</th>
+                            <th className="px-4 py-3">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {txs.map((tx: any) => (
+                            <tr key={tx._id} className="border-b border-border bg-slate-900/50">
+                                <td className="px-4 py-3 font-medium">{tx.referenceNumber}</td>
+                                <td className="px-4 py-3">
+                                    <span className={`px-2 py-1 rounded-full text-xs ${tx.type === 'Money In' ? 'bg-emerald-500/10 text-emerald-400' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                        {tx.type}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-3">${tx.amount.toLocaleString()}</td>
+                                <td className="px-4 py-3">{new Date(tx.date).toLocaleDateString()}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )}
       </SectionCard>
 
-      <TransactionFormModal open={openIn} onOpenChange={setOpenIn} mode="in" onSubmit={addTransaction} />
-      <TransactionFormModal open={openOut} onOpenChange={setOpenOut} mode="out" onSubmit={addTransaction} />
-      <TransferModal open={openTransfer} onOpenChange={setOpenTransfer} onSubmit={handleTransfer} />
       <Toaster />
     </PageContainer>
   );
 }
+
