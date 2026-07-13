@@ -3,8 +3,7 @@ import { motion } from "framer-motion";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { kanbanColumns } from "@/lib/mock-data";
-import { Calendar, Plus } from "lucide-react";
+import { FolderKanban, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/projects")({
@@ -12,11 +11,13 @@ export const Route = createFileRoute("/_app/projects")({
   component: ProjectsPage,
 });
 
-const priorityTone: Record<string, string> = {
-  High: "bg-destructive/10 text-destructive",
-  Medium: "bg-gold/15 text-[color:var(--gold-foreground)]",
-  Low: "bg-emerald/10 text-emerald",
-};
+const emptyColumns = [
+  { key: "planning", title: "Planning", tint: "royal" },
+  { key: "uiux", title: "UI/UX", tint: "gold" },
+  { key: "dev", title: "Development", tint: "royal" },
+  { key: "testing", title: "Testing", tint: "gold" },
+  { key: "done", title: "Completed", tint: "emerald" },
+];
 
 const columnAccent: Record<string, string> = {
   royal: "bg-royal",
@@ -38,7 +39,7 @@ function ProjectsPage() {
       />
 
       <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-4">
-        {kanbanColumns.map((col, ci) => (
+        {emptyColumns.map((col, ci) => (
           <motion.div
             key={col.key}
             initial={{ opacity: 0, y: 12 }}
@@ -49,39 +50,11 @@ function ProjectsPage() {
             <div className="mb-3 flex items-center gap-2">
               <span className={cn("h-2 w-2 rounded-full", columnAccent[col.tint])} />
               <h3 className="text-sm font-semibold">{col.title}</h3>
-              <Badge variant="secondary" className="ml-auto rounded-full">{col.tasks.length}</Badge>
+              <Badge variant="secondary" className="ml-auto rounded-full">0</Badge>
             </div>
-            <div className="space-y-3">
-              {col.tasks.map((t) => (
-                <motion.article
-                  key={t.id}
-                  whileHover={{ y: -3 }}
-                  className="rounded-xl border border-border bg-card p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold leading-tight">{t.title}</p>
-                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium", priorityTone[t.priority])}>
-                      {t.priority}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {t.tags.map((tg) => (
-                      <span key={tg} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">#{tg}</span>
-                    ))}
-                  </div>
-                  <div className="mt-3">
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full gradient-royal" style={{ width: `${t.progress}%` }} />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground truncate">{t.assignee}</span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Calendar className="h-3 w-3" /> {t.due}
-                    </span>
-                  </div>
-                </motion.article>
-              ))}
+            <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+              <FolderKanban className="h-8 w-8 text-muted-foreground opacity-30" />
+              <p className="text-xs text-muted-foreground">No projects yet</p>
             </div>
           </motion.div>
         ))}

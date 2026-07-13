@@ -25,4 +25,54 @@ router.get('/db-test', (req, res) => {
   }
 });
 
+// API Documentation route
+router.get('/docs', (req, res) => {
+  return res.json({
+    success: true,
+    message: 'Thenam ERP API Documentation',
+    version: '1.0.0',
+    baseUrl: '/api',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/health',
+        description: 'Health check - confirms server is running',
+        access: 'Public'
+      },
+      {
+        method: 'GET',
+        path: '/api/db-test',
+        description: 'Database test - checks MongoDB Atlas connection status',
+        access: 'Public'
+      },
+      {
+        method: 'GET',
+        path: '/api/docs',
+        description: 'API documentation - lists all available endpoints',
+        access: 'Public'
+      },
+      {
+        method: 'POST',
+        path: '/api/auth/register',
+        description: 'Register a new user',
+        access: 'Public',
+        body: { name: 'string', email: 'string', password: 'string', role: 'string (optional)' }
+      },
+      {
+        method: 'POST',
+        path: '/api/auth/login',
+        description: 'Login with email and password',
+        access: 'Public',
+        body: { email: 'string', password: 'string' }
+      },
+      {
+        method: 'GET',
+        path: '/api/auth/profile',
+        description: 'Get the profile of the currently authenticated user',
+        access: 'Private (Bearer Token required)'
+      }
+    ]
+  });
+});
+
 module.exports = router;

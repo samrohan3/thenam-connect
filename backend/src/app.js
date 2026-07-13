@@ -28,7 +28,26 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // 5. Mount API Routes
 app.use('/api', apiRoutes);
 
-// 6. 404 Handler
+// 6. Root Route
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Thenam ERP API is running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      dbTest: '/api/db-test',
+      auth: '/api/auth'
+    }
+  });
+});
+
+// 6b. /health shortcut alias (for direct health checks without /api prefix)
+app.get('/health', (req, res) => {
+  res.json({ success: true, message: 'ERP Backend Running' });
+});
+
+// 7. 404 Handler
 app.use((req, res, next) => {
   const error = new Error(`Route Not Found - ${req.originalUrl}`);
   error.statusCode = 404;
