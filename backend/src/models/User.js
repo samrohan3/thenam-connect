@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
-      lowercase: true
+      lowercase: true,
+      index: true
     },
     password: {
       type: String,
@@ -20,12 +21,53 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
+      enum: ['ADMIN', 'HR', 'FINANCE', 'MANAGER', 'EMPLOYEE', 'USER'],
       default: 'USER'
+    },
+    phone: {
+      type: String,
+      trim: true
+    },
+    avatar: {
+      type: String,
+      default: null
+    },
+    department: {
+      type: String,
+      trim: true
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+    refreshToken: {
+      type: String,
+      default: null
+    },
+    resetPasswordToken: {
+      type: String,
+      default: null
+    },
+    resetPasswordExpire: {
+      type: Date,
+      default: null
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false
+    },
+    lastLogin: {
+      type: Date,
+      default: null
     }
   },
   {
     timestamps: true
   }
 );
+
+// Index for frequently queried fields
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model('User', userSchema);
