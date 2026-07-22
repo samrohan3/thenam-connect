@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Get token from localStorage if exists
-const getToken = () => localStorage.getItem('token');
+const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
@@ -28,9 +28,12 @@ api.interceptors.response.use(
   (error) => {
     // Handle unauthorized errors (e.g., redirect to login or clear token)
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('token');
-      // In a real app, you might want to redirect to login page here, 
-      // but usually the auth store handles this gracefully
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        if (error.config && !error.config.url?.includes('/auth/login')) {
+          window.location.href = '/login';
+        }
+      }
     }
     return Promise.reject(error);
   }

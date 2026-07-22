@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Paperclip, Send, Bell } from "lucide-react";
 import { motion } from "framer-motion";
+import { useNotifications, useMarkNotificationRead } from "@/lib/api-hooks";
 
 export const Route = createFileRoute("/_app/communication")({
   head: () => ({ meta: [{ title: "Communication — Thenam ERP" }] }),
@@ -14,6 +15,8 @@ export const Route = createFileRoute("/_app/communication")({
 
 function CommunicationPage() {
   const [draft, setDraft] = useState("");
+  const { data: notifications, isLoading: isNotifsLoading } = useNotifications();
+  const markRead = useMarkNotificationRead();
 
   const send = () => { setDraft(""); };
 
@@ -63,10 +66,28 @@ function CommunicationPage() {
           </SectionCard>
 
           <SectionCard title="Notifications">
-            <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground text-sm">
-              <Bell className="h-4 w-4" />
-              <span>No notifications</span>
-            </div>
+            {isNotifsLoading ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">Loading notifications...</div>
+            ) : !notifications || notifications.length === 0 ? (
+              <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground text-sm">
+                <Bell className="h-4 w-4" />
+                <span>No notifications</span>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                {notifications.map((n: any) => (
+                  <div key={n._id} className="p-2 rounded-xl bg-slate-900 border border-border text-xs flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-foreground">{n.title}</p>
+                      <p className="text-muted-foreground text-[11px]">{n.message}</p>
+                    </div>
+                    {!n.isRead && (
+                      <Button size="sm" variant="ghost" className="text-[10px] text-primary h-7 px-2" onClick={() => markRead.mutate(n._id)}>Read</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </SectionCard>
         </div>
       </div>

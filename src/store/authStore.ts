@@ -8,6 +8,7 @@ interface User {
   role: string;
   avatar?: string;
   department?: string;
+  phone?: string;
 }
 
 interface AuthState {
@@ -24,15 +25,16 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
+  isAuthenticated: typeof window !== 'undefined' ? !!localStorage.getItem('token') : false,
   isLoading: false,
   error: null,
 
   login: async (credentials) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await api.post('/auth/login', credentials);
+      const endpoint = credentials.token ? '/auth/firebase-login' : '/auth/login';
+      const response = await api.post(endpoint, credentials);
       const { data, token } = response.data;
       
       localStorage.setItem('token', token);
@@ -85,7 +87,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
       set({ isAuthenticated: false, user: null, isLoading: false });
       return;

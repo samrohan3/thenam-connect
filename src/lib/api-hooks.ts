@@ -204,3 +204,137 @@ export const useSettings = () => {
         }
     });
 };
+
+export const useUpdateSettings = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await api.put('/settings', data);
+            return res.data.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['settings'] });
+        }
+    });
+};
+
+// --- User & Profile Hooks ---
+
+export const useUsers = () => {
+    return useQuery({
+        queryKey: ['users'],
+        queryFn: async () => {
+            const res = await api.get('/auth/users');
+            return res.data.data;
+        }
+    });
+};
+
+export const useUpdateProfile = () => {
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await api.put('/auth/profile', data);
+            return res.data.data;
+        }
+    });
+};
+
+export const useChangePassword = () => {
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await api.put('/auth/password', data);
+            return res.data.data;
+        }
+    });
+};
+
+// --- Additional Task & Project Hooks ---
+
+export const useUpdateTask = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            const res = await api.put(`/tasks/${id}`, data);
+            return res.data.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+        }
+    });
+};
+
+export const useUpdateTaskStatus = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, status }: { id: string; status: string }) => {
+            const res = await api.patch(`/tasks/${id}/status`, { status });
+            return res.data.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+        }
+    });
+};
+
+export const useUpdateProject = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            const res = await api.put(`/projects/${id}`, data);
+            return res.data.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+        }
+    });
+};
+
+// --- Additional Dashboard Hooks ---
+
+export const useDashboardCharts = () => {
+    return useQuery({
+        queryKey: ['dashboard-charts'],
+        queryFn: async () => {
+            const res = await api.get('/dashboard/charts');
+            return res.data.data;
+        }
+    });
+};
+
+export const useRecentActivities = () => {
+    return useQuery({
+        queryKey: ['recent-activities'],
+        queryFn: async () => {
+            const res = await api.get('/dashboard/recent');
+            return res.data.data;
+        }
+    });
+};
+
+// --- Notification Hooks ---
+
+export const useNotifications = () => {
+    return useQuery({
+        queryKey: ['notifications'],
+        queryFn: async () => {
+            const res = await api.get('/notifications');
+            return res.data.data;
+        }
+    });
+};
+
+export const useMarkNotificationRead = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const res = await api.patch(`/notifications/${id}/read`);
+            return res.data.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        }
+    });
+};
+

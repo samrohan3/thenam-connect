@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
+const { generateToken } = require('../utils/generateToken');
 const { validateRegisterInput, validateLoginInput } = require('../validations/authValidation');
 
 // @desc    Register user
@@ -155,10 +155,81 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+// @desc    Get all users
+// @route   GET /api/auth/users
+// @access  Private
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().select('-password').sort({ name: 1 });
+    return res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// @desc    Auth user via Firebase
+// @route   POST /api/auth/firebase-login
+// @access  Public
+const firebaseLogin = async (req, res, next) => {
+  try {
+    const { token, role } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: 'No token provided' });
+
+    const admin = require('../config/firebase');
+    let email, name;
+
+    if (!admin.apps || admin.apps.length === 0) {
+      // Fallback if admin is not configured: Just decode it blindly for demo
+      console.warn("⚠️ Firebase Admin not configured. Blindly decoding token for demo.");
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(base64, 'base64').toString());
+      email = payload.email;
+      name = payload.name || payload.email.split('@')[0];
+    } else {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      email = decodedToken.email;
+      name = decodedToken.name || decodedToken.email.split('@')[0];
+    }
+
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      // Create user if they don't exist
+      const randomPassword = await bcrypt.hash(Math.random().toString(36).slice(-8), 10);
+      user = await User.create({
+        email: email.toLowerCase(),
+        password: randomPassword,
+        name,
+        role: role || 'EMPLOYEE'
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user.id)
+      }
+    });
+  } catch (error) {
+    console.error("Firebase Login Error:", error);
+    return res.status(401).json({ success: false, message: 'Invalid Firebase token' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  getUsers,
+  firebaseLogin
 };

@@ -6,10 +6,12 @@ const { protect } = require('../middleware/auth');
 // Public routes
 router.post('/register', authController.registerUser);
 router.post('/login', authController.loginUser);
+router.post('/firebase-login', authController.firebaseLogin);
 
 // Protected routes
 router.get('/profile', protect, authController.getUserProfile);
 router.put('/profile', protect, authController.updateProfile);
 router.put('/password', protect, authController.changePassword);
+router.get('/users', protect, authController.getUsers);
 
 module.exports = router;
