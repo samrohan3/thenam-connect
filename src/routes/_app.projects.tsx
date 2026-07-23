@@ -5,7 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FolderKanban, Plus, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useProjects } from "@/lib/api-hooks";
+import { useProjects, useCreateProject, useVentures, useEmployees } from "@/lib/api-hooks";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/_app/projects")({
   head: () => ({ meta: [{ title: "Projects — Thenam ERP" }] }),
@@ -28,6 +42,54 @@ const columnAccent: Record<string, string> = {
 
 function ProjectsPage() {
   const { data: projects, isLoading } = useProjects();
+  const { data: ventures } = useVentures();
+  const { data: employees } = useEmployees();
+  const createProject = useCreateProject();
+
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [ventureId, setVentureId] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [budget, setBudget] = useState("10000");
+  const [priority, setPriority] = useState("Medium");
+  const [status, setStatus] = useState("Planning");
+  const [deadline, setDeadline] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !ventureId) {
+      toast.error("Venture and Project Name are required.");
+      return;
+    }
+
+    createProject.mutate({
+      name,
+      description,
+      venture: ventureId,
+      manager: managerId || null,
+      budget: Number(budget),
+      priority,
+      status,
+      deadline: deadline ? new Date(deadline).toISOString() : undefined
+    }, {
+      onSuccess: () => {
+        toast.success("Project created successfully");
+        setOpen(false);
+        setName("");
+        setDescription("");
+        setVentureId("");
+        setManagerId("");
+        setBudget("10000");
+        setPriority("Medium");
+        setStatus("Planning");
+        setDeadline("");
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.message || "Failed to create project");
+      }
+    });
+  };
 
   return (
     <PageContainer>
@@ -35,7 +97,7 @@ function ProjectsPage() {
         title="Projects"
         subtitle="Track work across every stage of delivery."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5">
+          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" /> New project
           </Button>
         }
@@ -81,7 +143,7 @@ function ProjectsPage() {
                                   </div>
                                   <div className="w-6 h-6 rounded-full bg-slate-800 border border-border flex items-center justify-center text-[10px] font-medium text-slate-400">
                                       {/* Project Manager Initials */}
-                                      {p.projectManager?.name?.charAt(0) || '?'}
+                                      {p.manager?.name?.charAt(0) || '?'}
                                   </div>
                               </div>
                           </div>
@@ -92,6 +154,104 @@ function ProjectsPage() {
           );
         })}
       </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Add a new project board to track development milestones.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="projName">Project Name</Label>
+              <Input id="projName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website V2" className="mt-1.5 rounded-xl border-border" required />
+            </div>
+            <div>
+              <Label htmlFor="projDesc">Description</Label>
+              <Textarea id="projDesc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Objectives, scope, milestones..." className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="projVenture">Venture</Label>
+                <select
+                  id="projVenture"
+                  value={ventureId}
+                  onChange={(e) => setVentureId(e.target.value)}
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  required
+                >
+                  <option value="">Select Venture</option>
+                  {ventures?.map((v: any) => (
+                    <option key={v._id} value={v._id}>{v.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="projManager">Project Manager</Label>
+                <select
+                  id="projManager"
+                  value={managerId}
+                  onChange={(e) => setManagerId(e.target.value)}
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                >
+                  <option value="">No Manager</option>
+                  {employees?.filter((emp: any) => !ventureId || emp.venture?._id === ventureId || emp.venture === ventureId).map((emp: any) => (
+                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label htmlFor="projBudget">Budget</Label>
+                <Input id="projBudget" type="number" value={budget} onChange={(e) => setBudget(e.target.value)} className="mt-1.5 rounded-xl border-border" required />
+              </div>
+              <div>
+                <Label htmlFor="projPriority">Priority</Label>
+                <select
+                  id="projPriority"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="projStatus">Status</Label>
+                <select
+                  id="projStatus"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                >
+                  <option value="Planning">Planning</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Testing">Testing</option>
+                  <option value="Completed">Completed</option>
+                  <option value="On Hold">On Hold</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="projDeadline">Deadline</Label>
+              <Input id="projDeadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createProject.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
+                {createProject.isPending ? "Creating..." : "Create Project"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Toaster />
     </PageContainer>
   );
 }

@@ -12,6 +12,7 @@ const getDashboardStats = async () => {
         activeEmployees,
         activeVentures,
         activeProjects,
+        completedProjects,
         pendingTasks,
         completedTasks
     ] = await Promise.all([
@@ -19,6 +20,7 @@ const getDashboardStats = async () => {
         Employee.countDocuments({ status: 'Active' }),
         Venture.countDocuments({ status: 'active' }),
         Project.countDocuments({ status: { $in: ['Active', 'Planning', 'Testing'] } }),
+        Project.countDocuments({ status: 'Completed' }),
         Task.countDocuments({ status: { $ne: 'Completed' } }),
         Task.countDocuments({ status: 'Completed' })
     ]);
@@ -38,6 +40,7 @@ const getDashboardStats = async () => {
         activeEmployees,
         activeVentures,
         activeProjects,
+        completedProjects,
         pendingTasks,
         completedTasks
     };

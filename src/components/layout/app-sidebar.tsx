@@ -14,7 +14,6 @@ import {
   FileBarChart,
   Settings,
   LogOut,
-  Sparkles,
   ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,13 +48,11 @@ export function AppSidebar({
       )}
     >
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl gradient-brand text-white shadow-elevated">
-          <Sparkles className="h-5 w-5" />
-        </div>
+        <img src="/logo.png" alt="Thenam Logo" className="h-9 w-9 shrink-0 object-contain" />
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold tracking-tight text-white">
-              Thenam Software
+              Thenam
             </p>
             <p className="truncate text-[11px] text-white/60">Business ERP Platform</p>
           </div>

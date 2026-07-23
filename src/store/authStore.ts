@@ -8,6 +8,7 @@ interface User {
   role: string;
   avatar?: string;
   department?: string;
+  phone?: string;
 }
 
 interface AuthState {
@@ -24,8 +25,8 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('token'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
+  isAuthenticated: typeof window !== 'undefined' ? !!localStorage.getItem('token') : false,
   isLoading: false,
   error: null,
 
@@ -33,7 +34,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await api.post('/auth/login', credentials);
-      const { data, token } = response.data;
+      const { data } = response.data;
+      const token = data.token;
       
       localStorage.setItem('token', token);
       
@@ -56,7 +58,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await api.post('/auth/register', userData);
-      const { data, token } = response.data;
+      const { data } = response.data;
+      const token = data.token;
       
       localStorage.setItem('token', token);
       
@@ -85,7 +88,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
       set({ isAuthenticated: false, user: null, isLoading: false });
       return;

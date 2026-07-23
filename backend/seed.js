@@ -46,11 +46,41 @@ const seedDatabase = async () => {
     console.log('Creating Admin User...');
     const hashedPassword = await bcrypt.hash('Admin@1234', 10);
     const adminUser = await User.create({
-      name: 'Aarav Sharma',
+      name: 'Admin User',
       email: 'admin@thenam.com',
       password: hashedPassword,
       role: 'ADMIN',
       phone: '+91 98765 43210',
+      department: 'Management'
+    });
+
+    console.log('Creating Manager User...');
+    const managerUser = await User.create({
+      name: 'Isha Manager',
+      email: 'isha@thenam.com',
+      password: hashedPassword,
+      role: 'MANAGER',
+      phone: '+91 98765 43211',
+      department: 'Operations'
+    });
+
+    console.log('Creating Employee User...');
+    const employeeUser = await User.create({
+      name: 'Neha Employee',
+      email: 'neha@thenam.com',
+      password: hashedPassword,
+      role: 'EMPLOYEE',
+      phone: '+91 98765 43212',
+      department: 'Sales'
+    });
+
+    console.log('Creating Founder User...');
+    const founderUser = await User.create({
+      name: 'Aarav Founder',
+      email: 'aarav@thenam.com',
+      password: hashedPassword,
+      role: 'FINANCE', // Assuming FOUNDER might be mapped to FINANCE or ADMIN, let's use ADMIN or a custom role if supported
+      phone: '+91 98765 43213',
       department: 'Management'
     });
 

@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
+const { generateToken } = require('../utils/generateToken');
 const { validateRegisterInput, validateLoginInput } = require('../validations/authValidation');
 
 // @desc    Register user
@@ -155,10 +155,26 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+// @desc    Get all users
+// @route   GET /api/auth/users
+// @access  Private
+const getUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().select('-password').sort({ name: 1 });
+    return res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  getUsers
 };

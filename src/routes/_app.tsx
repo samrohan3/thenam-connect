@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Outlet, createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { useAuthStore } from "@/store/authStore";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -12,6 +13,29 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate({ to: "/login" });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground font-medium">Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ThemeProvider>
