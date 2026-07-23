@@ -44,7 +44,7 @@ function RewardsPage() {
             {rewards.map((rew: any, idx: number) => (
               <div key={rew._id} className="p-5 rounded-2xl bg-slate-900 border border-border flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : idx === 1 ? 'bg-slate-300/20 text-slate-200' : 'bg-slate-800 text-slate-400'}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-gold/20 text-gold border border-gold/30' : idx === 1 ? 'bg-slate-300/20 text-slate-200' : 'bg-slate-800 text-slate-400'}`}>
                     #{idx + 1}
                   </div>
                   <div>
@@ -53,7 +53,7 @@ function RewardsPage() {
                     <p className="text-[10px] text-slate-400 mt-0.5">{rew.employee?.department || "Team"}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-xl font-bold text-sm">
+                <div className="flex items-center gap-1 bg-gold/10 text-gold border border-gold/20 px-3 py-1.5 rounded-xl font-bold text-sm">
                   <Award className="w-4 h-4" />
                   <span>+{rew.points}</span>
                 </div>

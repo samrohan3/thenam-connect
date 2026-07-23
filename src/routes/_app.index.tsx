@@ -135,12 +135,12 @@ function DashboardPage() {
                 >
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--color-royal)" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="var(--color-royal)" stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--color-gold)" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="var(--color-gold)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
@@ -171,7 +171,7 @@ function DashboardPage() {
                     type="monotone"
                     dataKey="revenue"
                     name="Revenue"
-                    stroke="#6366f1"
+                    stroke="var(--color-royal)"
                     strokeWidth={2}
                     fillOpacity={1}
                     fill="url(#colorRevenue)"
@@ -180,7 +180,7 @@ function DashboardPage() {
                     type="monotone"
                     dataKey="expense"
                     name="Expense"
-                    stroke="#ef4444"
+                    stroke="var(--color-gold)"
                     strokeWidth={2}
                     fillOpacity={1}
                     fill="url(#colorExpense)"

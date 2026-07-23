@@ -174,7 +174,7 @@ function FinancePage() {
               </div>
           </SectionCard>
           <SectionCard title="Monthly Profit" className="bg-slate-900 text-white">
-              <div className="text-3xl font-bold mt-2 text-blue-400">
+              <div className="text-3xl font-bold mt-2 text-royal">
                   ${isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
               </div>
           </SectionCard>
@@ -224,7 +224,7 @@ function FinancePage() {
                                 <td className="px-4 py-3 font-medium">{tx.referenceNumber}</td>
                                 <td className="px-4 py-3 text-xs font-semibold text-primary">{tx.venture?.name || "None"}</td>
                                 <td className="px-4 py-3">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${tx.type === 'Money In' ? 'bg-emerald-500/10 text-emerald-400' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${tx.type === 'Money In' ? 'bg-emerald/10 text-emerald' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-royal/10 text-royal'}`}>
                                         {tx.type}
                                     </span>
                                 </td>

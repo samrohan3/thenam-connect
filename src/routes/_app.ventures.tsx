@@ -107,7 +107,7 @@ function VenturesPage() {
                             <div className="grid h-12 w-12 place-items-center rounded-xl bg-slate-800 text-slate-300">
                                 <Building2 className="h-6 w-6" />
                             </div>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${venture.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${venture.status === 'active' ? 'bg-emerald/10 text-emerald' : 'bg-slate-800 text-slate-400'}`}>
                                 {venture.status}
                             </span>
                         </div>

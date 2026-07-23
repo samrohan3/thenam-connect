@@ -133,7 +133,7 @@ function TasksPage() {
                     {tasks.map((task: any) => (
                         <div key={task._id} className="p-4 rounded-xl bg-slate-900 border border-border flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <div className={`w-3 h-3 rounded-full ${task.status === 'Completed' ? 'bg-emerald-500' : task.status === 'In Progress' ? 'bg-amber-500' : 'bg-indigo-500'}`} />
+                                <div className={`w-3 h-3 rounded-full ${task.status === 'Completed' ? 'bg-emerald' : task.status === 'In Progress' ? 'bg-gold' : 'bg-royal'}`} />
                                 <div>
                                     <h4 className="font-medium text-foreground">{task.title}</h4>
                                     <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
@@ -159,7 +159,7 @@ function TasksPage() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="rounded-lg border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                                      className="rounded-lg border-emerald/30 text-emerald hover:bg-emerald/10 cursor-pointer"
                                       onClick={() => {
                                         updateTaskStatus.mutate({ id: task._id, status: 'Completed' }, {
                                           onSuccess: () => toast.success("Task marked as completed!")

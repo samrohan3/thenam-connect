@@ -33,9 +33,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (credentials) => {
     set({ isLoading: true, error: null });
     try {
-      const endpoint = credentials.token ? '/auth/firebase-login' : '/auth/login';
-      const response = await api.post(endpoint, credentials);
-      const { data, token } = response.data;
+      const response = await api.post('/auth/login', credentials);
+      const { data } = response.data;
+      const token = data.token;
       
       localStorage.setItem('token', token);
       
@@ -58,7 +58,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await api.post('/auth/register', userData);
-      const { data, token } = response.data;
+      const { data } = response.data;
+      const token = data.token;
       
       localStorage.setItem('token', token);
       
