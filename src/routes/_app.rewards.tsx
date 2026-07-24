@@ -42,15 +42,15 @@ function RewardsPage() {
         ) : (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {rewards.map((rew: any, idx: number) => (
-              <div key={rew._id} className="p-5 rounded-2xl bg-slate-900 border border-border flex items-center justify-between">
+              <div key={rew._id} className="p-5 rounded-2xl bg-card border border-border flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-gold/20 text-gold border border-gold/30' : idx === 1 ? 'bg-slate-300/20 text-slate-200' : 'bg-slate-800 text-slate-400'}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-gold/20 text-gold border border-gold/30' : idx === 1 ? 'bg-slate-300/20 text-foreground' : 'bg-muted text-muted-foreground'}`}>
                     #{idx + 1}
                   </div>
                   <div>
                     <h4 className="font-semibold text-foreground text-sm">{rew.employee?.name || "Employee"}</h4>
                     <p className="text-xs text-muted-foreground">{rew.title}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{rew.employee?.department || "Team"}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{rew.employee?.department || "Team"}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 bg-gold/10 text-gold border border-gold/20 px-3 py-1.5 rounded-xl font-bold text-sm">

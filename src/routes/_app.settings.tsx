@@ -146,7 +146,7 @@ function SettingsPage() {
                   <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
                   <AvatarFallback>{firstName.charAt(0)}{lastName.charAt(0)}</AvatarFallback>
                 </Avatar>
-                <span className="text-xs text-muted-foreground capitalize font-semibold tracking-wide border border-border/60 px-2 py-0.5 rounded-full bg-slate-900">{user?.role}</span>
+                <span className="text-xs text-muted-foreground capitalize font-semibold tracking-wide border border-border/60 px-2 py-0.5 rounded-full bg-card">{user?.role}</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 <div><Label htmlFor="sFirstName">First name</Label><Input id="sFirstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1.5 rounded-xl border-border" required /></div>

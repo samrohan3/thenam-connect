@@ -112,7 +112,7 @@ function DocumentsPage() {
     if (type === "pdf") return <FileText className="h-5 w-5 text-rose-400" />;
     if (type === "image") return <Image className="h-5 w-5 text-indigo-400" />;
     if (type === "excel") return <FileCode className="h-5 w-5 text-emerald-400" />;
-    return <File className="h-5 w-5 text-slate-400" />;
+    return <File className="h-5 w-5 text-muted-foreground" />;
   };
 
   return (
@@ -159,9 +159,9 @@ function DocumentsPage() {
         ) : (
           <div className="mt-4 space-y-3">
             {filteredDocs.map((doc) => (
-              <div key={doc.id} className="p-4 rounded-xl bg-slate-900 border border-border flex items-center justify-between">
+              <div key={doc.id} className="p-4 rounded-xl bg-card border border-border flex items-center justify-between">
                 <div className="flex items-center gap-4 min-w-0">
-                  <div className="p-2.5 rounded-xl bg-slate-800 flex items-center justify-center">
+                  <div className="p-2.5 rounded-xl bg-muted flex items-center justify-center">
                     {getFileIcon(doc.type)}
                   </div>
                   <div className="min-w-0">
@@ -184,7 +184,7 @@ function DocumentsPage() {
       </SectionCard>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>Upload Document</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -198,7 +198,7 @@ function DocumentsPage() {
                 id="docFile"
                 type="file"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                className="mt-1.5 rounded-xl border-border bg-slate-900 file:text-foreground file:font-semibold"
+                className="mt-1.5 rounded-xl border-border bg-card file:text-foreground file:font-semibold"
                 required
               />
             </div>

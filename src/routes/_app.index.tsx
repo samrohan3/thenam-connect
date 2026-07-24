@@ -61,7 +61,7 @@ function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <StatCard
             label="Total Revenue"
-            value={isStatsLoading ? "..." : `$${stats?.totalRevenue?.toLocaleString() || "0"}`}
+            value={isStatsLoading ? "..." : `₹${stats?.totalRevenue?.toLocaleString() || "0"}`}
             delta="—"
             tone="royal"
             icon={<Wallet className="h-5 w-5" />}
@@ -69,7 +69,7 @@ function DashboardPage() {
           />
           <StatCard
             label="Monthly Profit"
-            value={isStatsLoading ? "..." : `$${stats?.profit?.toLocaleString() || "0"}`}
+            value={isStatsLoading ? "..." : `₹${stats?.profit?.toLocaleString() || "0"}`}
             delta="—"
             tone="emerald"
             icon={<TrendingUp className="h-5 w-5" />}
@@ -152,7 +152,7 @@ function DashboardPage() {
                     className="text-xs text-muted-foreground"
                   />
                   <YAxis
-                    tickFormatter={(value) => `$${value}`}
+                    tickFormatter={(value) => `₹${value}`}
                     tick={{ fill: 'currentColor' }}
                     tickLine={false}
                     axisLine={false}
@@ -209,7 +209,7 @@ function DashboardPage() {
                 <button
                   key={a.label}
                   onClick={() => navigate({ to: a.path })}
-                  className={`group relative overflow-hidden rounded-2xl ${a.tone} p-5 text-left text-white shadow-elevated card-hover cursor-pointer`}
+                  className={`group relative overflow-hidden rounded-2xl ₹{a.tone} p-5 text-left text-white shadow-elevated card-hover cursor-pointer`}
                 >
                   <p className="text-sm font-semibold">{a.label}</p>
                 </button>
@@ -238,14 +238,14 @@ function DashboardPage() {
                         ) : null}
                         <div className="relative flex space-x-3">
                           <div>
-                            <span className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center ring-4 ring-slate-900 text-xs font-semibold text-slate-300">
+                            <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center ring-4 ring-slate-900 text-xs font-semibold text-muted-foreground">
                               {act.userName?.charAt(0) || act.user?.name?.charAt(0) || 'A'}
                             </span>
                           </div>
                           <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
                             <div>
                               <p className="text-xs text-foreground">
-                                <span className="font-semibold text-slate-300">{act.userName || act.user?.name || "System"}</span>{" "}
+                                <span className="font-semibold text-muted-foreground">{act.userName || act.user?.name || "System"}</span>{" "}
                                 {act.action} <span className="font-semibold text-primary">{act.entityName || act.entity}</span>
                               </p>
                             </div>

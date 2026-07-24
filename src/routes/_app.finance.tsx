@@ -158,24 +158,24 @@ function FinancePage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          <SectionCard title="Company Wallet" className="bg-slate-900 text-white">
+          <SectionCard title="Company Wallet" className="bg-card text-white">
               <div className="text-3xl font-bold mt-2">
-                  ${isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
+                  ₹{isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Money In Today" className="bg-slate-900 text-white">
+          <SectionCard title="Money In Today" className="bg-card text-white">
               <div className="text-3xl font-bold mt-2 text-emerald-400">
-                  ${isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
+                  ₹{isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Money Out Today" className="bg-slate-900 text-white">
+          <SectionCard title="Money Out Today" className="bg-card text-white">
               <div className="text-3xl font-bold mt-2 text-rose-400">
-                  ${isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
+                  ₹{isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Monthly Profit" className="bg-slate-900 text-white">
+          <SectionCard title="Monthly Profit" className="bg-card text-white">
               <div className="text-3xl font-bold mt-2 text-royal">
-                  ${isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
+                  ₹{isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
               </div>
           </SectionCard>
       </div>
@@ -200,15 +200,15 @@ function FinancePage() {
             <div className="p-8 text-center text-muted-foreground">Loading transactions...</div>
         ) : !txs || txs.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
-                <div className="w-12 h-12 mx-auto bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                    <ArrowRightLeft className="h-6 w-6 text-slate-400" />
+                <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center mb-4">
+                    <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
                 </div>
                 No transactions found. Add revenue or record an expense to get started.
             </div>
         ) : (
             <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-muted-foreground uppercase bg-slate-900 border-b border-border">
+                    <thead className="text-xs text-muted-foreground uppercase bg-card border-b border-border">
                         <tr>
                             <th className="px-4 py-3">Reference</th>
                             <th className="px-4 py-3">Venture</th>
@@ -220,16 +220,16 @@ function FinancePage() {
                     </thead>
                     <tbody>
                         {txs.map((tx: any) => (
-                            <tr key={tx._id} className="border-b border-border bg-slate-900/50">
+                            <tr key={tx._id} className="border-b border-border bg-card/50">
                                 <td className="px-4 py-3 font-medium">{tx.referenceNumber}</td>
                                 <td className="px-4 py-3 text-xs font-semibold text-primary">{tx.venture?.name || "None"}</td>
                                 <td className="px-4 py-3">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${tx.type === 'Money In' ? 'bg-emerald/10 text-emerald' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-royal/10 text-royal'}`}>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ₹{tx.type === 'Money In' ? 'bg-emerald/10 text-emerald' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-royal/10 text-royal'}`}>
                                         {tx.type}
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
-                                <td className="px-4 py-3 font-semibold">${tx.amount.toLocaleString()}</td>
+                                <td className="px-4 py-3 font-semibold">₹{tx.amount.toLocaleString()}</td>
                                 <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
                             </tr>
                         ))}
@@ -241,7 +241,7 @@ function FinancePage() {
 
       {/* Dialog for Add Revenue */}
       <Dialog open={revenueOpen} onOpenChange={setRevenueOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>Add Revenue (Money In)</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -256,7 +256,7 @@ function FinancePage() {
                   id="revVent"
                   value={revVenture}
                   onChange={(e) => setRevVenture(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -266,7 +266,7 @@ function FinancePage() {
                 </select>
               </div>
               <div>
-                <Label htmlFor="revAmt">Amount ($)</Label>
+                <Label htmlFor="revAmt">Amount (₹)</Label>
                 <Input id="revAmt" type="number" value={revAmount} onChange={(e) => setRevAmount(e.target.value)} placeholder="1000" className="mt-1.5 rounded-xl border-border" required />
               </div>
             </div>
@@ -277,7 +277,7 @@ function FinancePage() {
                   id="revCat"
                   value={revCategory}
                   onChange={(e) => setRevCategory(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Client Payment">Client Payment</option>
                   <option value="Product Sales">Product Sales</option>
@@ -292,7 +292,7 @@ function FinancePage() {
                   id="revMet"
                   value={revMethod}
                   onChange={(e) => setRevMethod(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="UPI">UPI</option>
@@ -322,7 +322,7 @@ function FinancePage() {
 
       {/* Dialog for Record Expense */}
       <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>Record Expense (Money Out)</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -337,7 +337,7 @@ function FinancePage() {
                   id="expVent"
                   value={expVenture}
                   onChange={(e) => setExpVenture(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -347,7 +347,7 @@ function FinancePage() {
                 </select>
               </div>
               <div>
-                <Label htmlFor="expAmt">Amount ($)</Label>
+                <Label htmlFor="expAmt">Amount (₹)</Label>
                 <Input id="expAmt" type="number" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="500" className="mt-1.5 rounded-xl border-border" required />
               </div>
             </div>
@@ -358,7 +358,7 @@ function FinancePage() {
                   id="expCat"
                   value={expCategory}
                   onChange={(e) => setExpCategory(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Operating Expense">Operating Expense</option>
                   <option value="Rent">Rent</option>
@@ -374,7 +374,7 @@ function FinancePage() {
                   id="expMet"
                   value={expMethod}
                   onChange={(e) => setExpMethod(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="UPI">UPI</option>
@@ -404,7 +404,7 @@ function FinancePage() {
 
       {/* Dialog for Transfer Funds */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>Transfer Funds Between Ventures</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -419,7 +419,7 @@ function FinancePage() {
                   id="trFrom"
                   value={fromVenture}
                   onChange={(e) => setFromVenture(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -434,7 +434,7 @@ function FinancePage() {
                   id="trTo"
                   value={toVenture}
                   onChange={(e) => setToVenture(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -445,7 +445,7 @@ function FinancePage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="trAmt">Amount ($)</Label>
+              <Label htmlFor="trAmt">Amount (₹)</Label>
               <Input id="trAmt" type="number" value={trnAmount} onChange={(e) => setTrnAmount(e.target.value)} placeholder="5000" className="mt-1.5 rounded-xl border-border" required />
             </div>
             <div>

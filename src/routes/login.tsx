@@ -109,7 +109,7 @@ function LoginPage() {
   const currentTheme = roleThemes[selectedRole];
 
   return (
-    <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
+    <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 bg-background text-foreground overflow-hidden font-sans relative">
       {/* Background Decorative Blobs for Login Form (Right Panel) */}
       <div className="absolute right-0 top-0 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute right-[20%] bottom-0 w-[400px] h-[400px] bg-pink-500/5 rounded-full blur-[100px] pointer-events-none" />
@@ -127,7 +127,7 @@ function LoginPage() {
           transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
           className="absolute right-0 bottom-0 h-[520px] w-[520px] rounded-full bg-black/20 blur-3xl" 
         />
-        <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[1px]" />
+        <div className="absolute inset-0 bg-background/20 backdrop-blur-[1px]" />
         
         <div className="absolute inset-0 flex flex-col justify-between p-12 z-10">
           {/* Header Brand */}
@@ -187,7 +187,7 @@ function LoginPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-md p-8 rounded-3xl bg-slate-900/50 border border-slate-800/80 backdrop-blur-xl shadow-2xl relative overflow-hidden"
+          className="w-full max-w-md p-8 rounded-3xl bg-card/50 border border-slate-800/80 backdrop-blur-xl shadow-2xl relative overflow-hidden"
         >
           {/* Subtle colored glow in card corner */}
           <div className={`absolute -right-12 -top-12 w-28 h-28 rounded-full blur-2xl opacity-20 transition-all duration-700 bg-current ${currentTheme.accent}`} />
@@ -202,13 +202,13 @@ function LoginPage() {
           </div>
 
           <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">Welcome back</h2>
-          <p className="mt-1.5 text-sm text-slate-400">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Select a role & sign in with secure local credentials.
           </p>
 
           {/* Role selector buttons */}
           <div className="mt-6">
-            <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Select Login Role</Label>
+            <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Select Login Role</Label>
             <div className="grid grid-cols-2 gap-2 mt-2">
               {rolesList.map((r) => (
                 <motion.button
@@ -220,10 +220,10 @@ function LoginPage() {
                   className={`p-3 rounded-2xl border text-left transition-all duration-300 flex items-center gap-2.5 cursor-pointer relative ${
                     selectedRole === r.id 
                       ? 'border-indigo-500/80 bg-indigo-500/10 text-white shadow-lg shadow-indigo-500/5' 
-                      : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      : 'border-slate-800 bg-background/40 text-muted-foreground hover:border-slate-700 hover:text-foreground'
                   }`}
                 >
-                  <div className={`p-1.5 rounded-lg ${selectedRole === r.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-900 text-slate-500'}`}>
+                  <div className={`p-1.5 rounded-lg ${selectedRole === r.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-card text-muted-foreground'}`}>
                     <UserCheck className="h-4 w-4" />
                   </div>
                   <div>
@@ -237,9 +237,9 @@ function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
-              <Label htmlFor="email" className="text-xs font-semibold text-slate-300">Email Address</Label>
+              <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground">Email Address</Label>
               <div className="relative mt-1.5">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
                   <Mail className="h-4 w-4" />
                 </div>
                 <Input
@@ -248,18 +248,18 @@ function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 h-11 rounded-2xl bg-slate-950/60 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500 text-slate-100 transition-all placeholder:text-slate-600"
+                  className="pl-10 h-11 rounded-2xl bg-background/60 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500 text-foreground transition-all placeholder:text-slate-600"
                   placeholder="you@company.com"
                 />
               </div>
             </div>
             <div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-xs font-semibold text-slate-300">Password</Label>
+                <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground">Password</Label>
                 <a href="#" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium">Forgot password?</a>
               </div>
               <div className="relative mt-1.5">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
                   <Lock className="h-4 w-4" />
                 </div>
                 <Input
@@ -268,14 +268,14 @@ function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 h-11 rounded-2xl bg-slate-950/60 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500 text-slate-100 transition-all placeholder:text-slate-600"
+                  className="pl-10 h-11 rounded-2xl bg-background/60 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500 text-foreground transition-all placeholder:text-slate-600"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-2 py-1">
               <Checkbox id="remember" defaultChecked className="rounded-md border-slate-800 text-indigo-600 focus:ring-indigo-500" />
-              <label htmlFor="remember" className="text-xs text-slate-400 cursor-pointer select-none">
+              <label htmlFor="remember" className="text-xs text-muted-foreground cursor-pointer select-none">
                 Remember me for 30 days
               </label>
             </div>
@@ -295,7 +295,7 @@ function LoginPage() {
                 variant="outline"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full h-11 rounded-2xl border-slate-800 bg-slate-950/40 hover:bg-slate-950/80 text-slate-300 hover:text-white transition gap-2 cursor-pointer"
+                className="w-full h-11 rounded-2xl border-slate-800 bg-background/40 hover:bg-background/80 text-muted-foreground hover:text-white transition gap-2 cursor-pointer"
               >
                 <KeyRound className="h-4 w-4 text-amber-500" />
                 Developer Fast Login
@@ -303,7 +303,7 @@ function LoginPage() {
             </div>
           </form>
 
-          <p className="mt-8 text-center text-xs text-slate-500">
+          <p className="mt-8 text-center text-xs text-muted-foreground">
             Need workspace access?{" "}
             <Link to="/login" className="text-indigo-400 hover:text-indigo-300 hover:underline font-bold transition-all">Contact Administrator</Link>
           </p>

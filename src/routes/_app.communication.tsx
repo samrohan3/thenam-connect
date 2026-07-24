@@ -76,7 +76,7 @@ function CommunicationPage() {
             ) : (
               <div className="space-y-2 max-h-[200px] overflow-y-auto">
                 {notifications.map((n: any) => (
-                  <div key={n._id} className="p-2 rounded-xl bg-slate-900 border border-border text-xs flex items-center justify-between">
+                  <div key={n._id} className="p-2 rounded-xl bg-card border border-border text-xs flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-foreground">{n.title}</p>
                       <p className="text-muted-foreground text-[11px]">{n.message}</p>

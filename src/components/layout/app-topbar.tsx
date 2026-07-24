@@ -102,7 +102,7 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
 
           {/* Floating Search Results */}
           {searchFocused && searchQuery.trim().length > 0 && (
-            <div className="absolute top-12 left-0 right-0 z-50 rounded-2xl bg-slate-950 border border-border shadow-2xl p-3 max-h-80 overflow-y-auto space-y-2">
+            <div className="absolute top-12 left-0 right-0 z-50 rounded-2xl bg-background border border-border shadow-2xl p-3 max-h-80 overflow-y-auto space-y-2">
               {filteredResults.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-2 text-center">No results found for "{searchQuery}"</p>
               ) : (
@@ -114,7 +114,7 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
                       setSearchQuery("");
                       setSearchFocused(false);
                     }}
-                    className="p-2.5 rounded-xl hover:bg-slate-900 cursor-pointer flex items-center justify-between transition"
+                    className="p-2.5 rounded-xl hover:bg-card cursor-pointer flex items-center justify-between transition"
                   >
                     <div>
                       <p className="text-xs font-semibold text-foreground">{item.title}</p>
@@ -139,7 +139,7 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
                 <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Quick add</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 bg-slate-950 text-foreground border-border">
+            <DropdownMenuContent align="end" className="w-48 bg-background text-foreground border-border">
               <DropdownMenuLabel>Create new</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate({ to: "/projects" })} className="cursor-pointer">Project</DropdownMenuItem>
@@ -170,7 +170,7 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
                 <AvatarFallback>{user?.name?.charAt(0) || "A"}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-slate-950 text-foreground border-border">
+            <DropdownMenuContent align="end" className="w-56 bg-background text-foreground border-border">
               <DropdownMenuLabel>
                 <p className="text-sm font-semibold">{user?.name || "User"}</p>
                 <p className="text-xs text-muted-foreground">{user?.email || ""}</p>

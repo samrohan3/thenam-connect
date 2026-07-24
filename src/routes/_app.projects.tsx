@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FolderKanban, Plus, Clock } from "lucide-react";
+import { FolderKanban, Plus, Clock, Trash2, Edit2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useProjects, useCreateProject, useVentures, useEmployees } from "@/lib/api-hooks";
+import { useProjects, useCreateProject, useVentures, useEmployees, useUpdateProject, useDeleteProject } from "@/lib/api-hooks";
+import { useAuthStore } from "@/store/authStore";
 import { useState } from "react";
 import {
   Dialog,
@@ -45,8 +47,25 @@ function ProjectsPage() {
   const { data: ventures } = useVentures();
   const { data: employees } = useEmployees();
   const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role?.toUpperCase() === "ADMIN";
+
+  const onDragEnd = (result: any) => {
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const newStatus = destination.droppableId;
+    updateProject.mutate({ id: draggableId, data: { status: newStatus } }, {
+      onSuccess: () => toast.success("Project status updated"),
+      onError: () => toast.error("Failed to update project status")
+    });
+  };
+
 
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [ventureId, setVentureId] = useState("");
@@ -97,12 +116,13 @@ function ProjectsPage() {
         title="Projects"
         subtitle="Track work across every stage of delivery."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={() => setOpen(true)}>
+          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
             <Plus className="h-4 w-4" /> New project
           </Button>
         }
       />
 
+      <DragDropContext onDragEnd={onDragEnd}>
       <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-4 h-[calc(100vh-140px)]">
         {projectStatuses.map((col, ci) => {
           const colProjects = projects?.filter((p: any) => p.status === col.key) || [];
@@ -120,7 +140,13 @@ function ProjectsPage() {
                 <Badge variant="secondary" className="ml-auto rounded-full">{isLoading ? '...' : colProjects.length}</Badge>
               </div>
               
-              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+              <Droppable droppableId={col.key}>
+              {(provided) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[200px]"
+                >
                   {isLoading ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
                           <p className="text-xs text-muted-foreground">Loading...</p>
@@ -131,8 +157,15 @@ function ProjectsPage() {
                         <p className="text-xs text-muted-foreground">No projects yet</p>
                       </div>
                   ) : (
-                      colProjects.map((p: any) => (
-                          <div key={p._id} className="bg-slate-900 border border-border rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                      colProjects.map((p: any, index: number) => (
+                          <Draggable key={p._id} draggableId={p._id} index={index}>
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className="bg-card border border-border rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                              >
                               <h4 className="font-medium text-sm text-foreground mb-1">{p.name}</h4>
                               {p.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{p.description}</p>}
                               
@@ -141,24 +174,31 @@ function ProjectsPage() {
                                       <Clock className="w-3.5 h-3.5" />
                                       <span>{new Date(p.deadline || p.createdAt).toLocaleDateString()}</span>
                                   </div>
-                                  <div className="w-6 h-6 rounded-full bg-slate-800 border border-border flex items-center justify-center text-[10px] font-medium text-slate-400">
+                                  <div className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-medium text-muted-foreground">
                                       {/* Project Manager Initials */}
                                       {p.manager?.name?.charAt(0) || '?'}
                                   </div>
                               </div>
                           </div>
+                            )}
+                          </Draggable>
                       ))
                   )}
+                  {provided.placeholder}
               </div>
+              )}
+              </Droppable>
             </motion.div>
           );
         })}
       </div>
+      </DragDropContext>
+
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Project" : "Create New Project"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Add a new project board to track development milestones.
             </DialogDescription>
@@ -179,7 +219,7 @@ function ProjectsPage() {
                   id="projVenture"
                   value={ventureId}
                   onChange={(e) => setVentureId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -194,7 +234,7 @@ function ProjectsPage() {
                   id="projManager"
                   value={managerId}
                   onChange={(e) => setManagerId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">No Manager</option>
                   {employees?.filter((emp: any) => !ventureId || emp.venture?._id === ventureId || emp.venture === ventureId).map((emp: any) => (
@@ -214,7 +254,7 @@ function ProjectsPage() {
                   id="projPriority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
@@ -228,7 +268,7 @@ function ProjectsPage() {
                   id="projStatus"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Planning">Planning</option>
                   <option value="In Progress">In Progress</option>
@@ -244,8 +284,8 @@ function ProjectsPage() {
             </div>
             <DialogFooter className="pt-2">
               <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createProject.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
-                {createProject.isPending ? "Creating..." : "Create Project"}
+              <Button type="submit" disabled={editingId ? updateProject.isPending : createProject.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
+                {editingId ? (updateProject.isPending ? "Updating..." : "Update Project") : (createProject.isPending ? "Creating..." : "Create Project")}
               </Button>
             </DialogFooter>
           </form>

@@ -2,13 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui-ext/section-card";
-import { ClipboardList, Plus, Clock } from "lucide-react";
+import { ClipboardList, Plus, Clock, Trash2, Edit2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
-import { useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees, useVentures } from "@/lib/api-hooks";
+import { useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees, useVentures, useDeleteTask, useUpdateTask } from "@/lib/api-hooks";
+import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -39,8 +40,12 @@ function TasksPage() {
   
   const createTask = useCreateTask();
   const updateTaskStatus = useUpdateTaskStatus();
+  const deleteTask = useDeleteTask();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role?.toUpperCase() === "ADMIN";
 
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -91,7 +96,7 @@ function TasksPage() {
         title="Tasks"
         subtitle="Everything on your plate — timelines, priorities, progress."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={() => setOpen(true)}>
+          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
             <Plus className="h-4 w-4" /> New task
           </Button>
         }
@@ -124,14 +129,14 @@ function TasksPage() {
                       Create tasks and assign them to team members to track progress.
                     </p>
                   </div>
-                  <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={() => setOpen(true)}>
+                  <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
                     <Plus className="h-4 w-4" /> New task
                   </Button>
                 </motion.div>
             ) : (
                 <div className="mt-4 space-y-3">
                     {tasks.map((task: any) => (
-                        <div key={task._id} className="p-4 rounded-xl bg-slate-900 border border-border flex items-center justify-between">
+                        <div key={task._id} className="p-4 rounded-xl bg-card border border-border flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className={`w-3 h-3 rounded-full ${task.status === 'Completed' ? 'bg-emerald' : task.status === 'In Progress' ? 'bg-gold' : 'bg-royal'}`} />
                                 <div>
@@ -190,9 +195,9 @@ function TasksPage() {
       </Tabs>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Task" : "Create New Task"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Define a task and assign it to employees.
             </DialogDescription>
@@ -213,7 +218,7 @@ function TasksPage() {
                   id="tVenture"
                   value={ventureId}
                   onChange={(e) => setVentureId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>
@@ -228,7 +233,7 @@ function TasksPage() {
                   id="tProject"
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">No Project</option>
                   {projects?.filter((p: any) => !ventureId || p.venture?._id === ventureId || p.venture === ventureId).map((proj: any) => (
@@ -244,7 +249,7 @@ function TasksPage() {
                   id="tAssignee"
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">Unassigned</option>
                   {employees?.filter((emp: any) => !ventureId || emp.venture?._id === ventureId || emp.venture === ventureId).map((emp: any) => (
@@ -264,7 +269,7 @@ function TasksPage() {
                   id="tPriority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
@@ -278,7 +283,7 @@ function TasksPage() {
                   id="tStatus"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Pending">Pending</option>
                   <option value="In Progress">In Progress</option>
@@ -289,8 +294,8 @@ function TasksPage() {
             </div>
             <DialogFooter className="pt-2">
               <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createTask.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
-                {createTask.isPending ? "Creating..." : "Create Task"}
+              <Button type="submit" disabled={editingId ? updateTask.isPending : createTask.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
+                {editingId ? (updateTask.isPending ? "Updating..." : "Update Task") : (createTask.isPending ? "Creating..." : "Create Task")}
               </Button>
             </DialogFooter>
           </form>

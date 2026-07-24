@@ -338,3 +338,55 @@ export const useMarkNotificationRead = () => {
     });
 };
 
+
+export const useDeleteProject = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const res = await api.delete(`/projects/${id}`);
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+        }
+    });
+};
+
+export const useDeleteVenture = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const res = await api.delete(`/ventures/${id}`);
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['ventures'] });
+        }
+    });
+};
+
+export const useDeleteTask = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const res = await api.delete(`/tasks/${id}`);
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+    });
+};
+
+export const useUpdateVenture = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            const res = await api.put(`/ventures/${id}`, data);
+            return res.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['ventures'] });
+        }
+    });
+};

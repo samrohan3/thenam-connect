@@ -105,9 +105,9 @@ function TeamPage() {
         ) : (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {employees.map((emp: any) => (
-                    <div key={emp._id} className="p-4 rounded-xl bg-slate-900 border border-border flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden">
-                             {emp.avatar ? <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover"/> : <Users className="h-6 w-6 text-slate-400" />}
+                    <div key={emp._id} className="p-4 rounded-xl bg-card border border-border flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                             {emp.avatar ? <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover"/> : <Users className="h-6 w-6 text-muted-foreground" />}
                         </div>
                         <div>
                             <h4 className="font-medium text-foreground">{emp.name}</h4>
@@ -121,7 +121,7 @@ function TeamPage() {
       </SectionCard>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md bg-slate-950 text-foreground border-border rounded-2xl">
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>Add Employee</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -144,7 +144,7 @@ function TeamPage() {
                   id="empDept"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Engineering">Engineering</option>
                   <option value="Sales">Sales</option>
@@ -161,7 +161,7 @@ function TeamPage() {
                   id="empRole"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="Developer">Developer</option>
                   <option value="Manager">Manager</option>
@@ -178,7 +178,7 @@ function TeamPage() {
                   id="empVenture"
                   value={ventureId}
                   onChange={(e) => setVentureId(e.target.value)}
-                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-slate-900 text-sm text-foreground focus:outline-none"
+                  className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="">Select Venture</option>

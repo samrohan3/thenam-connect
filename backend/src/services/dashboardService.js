@@ -19,7 +19,7 @@ const getDashboardStats = async () => {
         Wallet.find().lean(),
         Employee.countDocuments({ status: 'Active' }),
         Venture.countDocuments({ status: 'active' }),
-        Project.countDocuments({ status: { $in: ['Active', 'Planning', 'Testing'] } }),
+        Project.countDocuments({ status: { $in: ['In Progress', 'Planning', 'Testing', 'On Hold'] } }),
         Project.countDocuments({ status: 'Completed' }),
         Task.countDocuments({ status: { $ne: 'Completed' } }),
         Task.countDocuments({ status: 'Completed' })
