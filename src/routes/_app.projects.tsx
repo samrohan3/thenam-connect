@@ -50,19 +50,7 @@ function ProjectsPage() {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const { user } = useAuthStore();
-  const isAdmin = user?.role?.toUpperCase() === "ADMIN";
-
-  const onDragEnd = (result: any) => {
-    const { destination, source, draggableId } = result;
-    if (!destination) return;
-    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
-    const newStatus = destination.droppableId;
-    updateProject.mutate({ id: draggableId, data: { status: newStatus } }, {
-      onSuccess: () => toast.success("Project status updated"),
-      onError: () => toast.error("Failed to update project status")
-    });
-  };
-
+  const isAdmin = user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "MANAGER";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,6 +63,46 @@ function ProjectsPage() {
   const [status, setStatus] = useState("Planning");
   const [deadline, setDeadline] = useState("");
 
+  const openNew = () => {
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setVentureId(ventures && ventures.length > 0 ? ventures[0]._id : "");
+    setManagerId("");
+    setBudget("10000");
+    setPriority("Medium");
+    setStatus("Planning");
+    setDeadline("");
+    setOpen(true);
+  };
+
+  const openEdit = (p: any) => {
+    setEditingId(p._id || p.id);
+    setName(p.name || "");
+    setDescription(p.description || "");
+    setVentureId(p.venture?._id || p.venture || "");
+    setManagerId(p.manager?._id || p.manager || "");
+    setBudget(String(p.budget || 10000));
+    setPriority(p.priority || "Medium");
+    setStatus(p.status || "Planning");
+    setDeadline(p.deadline ? new Date(p.deadline).toISOString().split("T")[0] : "");
+    setOpen(true);
+  };
+
+  const onDragEnd = (result: any) => {
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const newStatus = destination.droppableId;
+    updateProject.mutate(
+      { id: draggableId, data: { status: newStatus } },
+      {
+        onSuccess: () => toast.success("Project status updated"),
+        onError: () => toast.error("Failed to update project status"),
+      }
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !ventureId) {
@@ -82,7 +110,7 @@ function ProjectsPage() {
       return;
     }
 
-    createProject.mutate({
+    const payload = {
       name,
       description,
       venture: ventureId,
@@ -90,24 +118,42 @@ function ProjectsPage() {
       budget: Number(budget),
       priority,
       status,
-      deadline: deadline ? new Date(deadline).toISOString() : undefined
-    }, {
-      onSuccess: () => {
-        toast.success("Project created successfully");
-        setOpen(false);
-        setName("");
-        setDescription("");
-        setVentureId("");
-        setManagerId("");
-        setBudget("10000");
-        setPriority("Medium");
-        setStatus("Planning");
-        setDeadline("");
-      },
-      onError: (err: any) => {
-        toast.error(err.response?.data?.message || "Failed to create project");
-      }
-    });
+      deadline: deadline ? new Date(deadline).toISOString() : undefined,
+    };
+
+    if (editingId) {
+      updateProject.mutate(
+        { id: editingId, data: payload },
+        {
+          onSuccess: () => {
+            toast.success("Project updated successfully");
+            setOpen(false);
+          },
+          onError: (err: any) => {
+            toast.error(err.response?.data?.message || "Failed to update project");
+          },
+        }
+      );
+    } else {
+      createProject.mutate(payload, {
+        onSuccess: () => {
+          toast.success("Project created successfully");
+          setOpen(false);
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to create project");
+        },
+      });
+    }
+  };
+
+  const handleDelete = (id: string, projName: string) => {
+    if (confirm(`Are you sure you want to delete project "${projName}"?`)) {
+      deleteProject.mutate(id, {
+        onSuccess: () => toast.success("Project deleted successfully"),
+        onError: (err: any) => toast.error(err.response?.data?.message || "Failed to delete project"),
+      });
+    }
   };
 
   return (
@@ -123,98 +169,142 @@ function ProjectsPage() {
       />
 
       <DragDropContext onDragEnd={onDragEnd}>
-      <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-4 h-[calc(100vh-140px)]">
-        {projectStatuses.map((col, ci) => {
-          const colProjects = projects?.filter((p: any) => p.status === col.key) || [];
-          return (
-            <motion.div
-              key={col.key}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: ci * 0.05 }}
-              className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col"
-            >
-              <div className="mb-3 flex items-center gap-2">
-                <span className={cn("h-2 w-2 rounded-full", columnAccent[col.tint])} />
-                <h3 className="text-sm font-semibold">{col.title}</h3>
-                <Badge variant="secondary" className="ml-auto rounded-full">{isLoading ? '...' : colProjects.length}</Badge>
-              </div>
-              
-              <Droppable droppableId={col.key}>
-              {(provided) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[200px]"
-                >
-                  {isLoading ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+        <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
+          {projectStatuses.map((col, ci) => {
+            const colProjects = projects?.filter((p: any) => p.status === col.key) || [];
+            return (
+              <motion.div
+                key={col.key}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: ci * 0.05 }}
+                className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col"
+              >
+                <div className="mb-3 flex items-center gap-2">
+                  <span className={cn("h-2 w-2 rounded-full", columnAccent[col.tint])} />
+                  <h3 className="text-sm font-semibold">{col.title}</h3>
+                  <Badge variant="secondary" className="ml-auto rounded-full">
+                    {isLoading ? "..." : colProjects.length}
+                  </Badge>
+                </div>
+
+                <Droppable droppableId={col.key}>
+                  {(provided) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[200px]"
+                    >
+                      {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
                           <p className="text-xs text-muted-foreground">Loading...</p>
-                      </div>
-                  ) : colProjects.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
-                        <FolderKanban className="h-8 w-8 text-muted-foreground opacity-30" />
-                        <p className="text-xs text-muted-foreground">No projects yet</p>
-                      </div>
-                  ) : (
-                      colProjects.map((p: any, index: number) => (
-                          <Draggable key={p._id} draggableId={p._id} index={index}>
+                        </div>
+                      ) : colProjects.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                          <FolderKanban className="h-8 w-8 text-muted-foreground opacity-30" />
+                          <p className="text-xs text-muted-foreground">No projects yet</p>
+                        </div>
+                      ) : (
+                        colProjects.map((p: any, index: number) => (
+                          <Draggable key={p._id || p.id} draggableId={p._id || p.id} index={index}>
                             {(provided) => (
                               <div
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className="bg-card border border-border rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                                className="bg-card border border-border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow group"
                               >
-                              <h4 className="font-medium text-sm text-foreground mb-1">{p.name}</h4>
-                              {p.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{p.description}</p>}
-                              
-                              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <Clock className="w-3.5 h-3.5" />
-                                      <span>{new Date(p.deadline || p.createdAt).toLocaleDateString()}</span>
+                                <div className="flex items-start justify-between gap-2">
+                                  <h4 className="font-medium text-sm text-foreground mb-1">{p.name}</h4>
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => openEdit(p)}
+                                      className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => handleDelete(p._id || p.id, p.name)}
+                                        className="p-1 text-muted-foreground hover:text-rose-500 rounded"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                   </div>
-                                  <div className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                                      {/* Project Manager Initials */}
-                                      {p.manager?.name?.charAt(0) || '?'}
+                                </div>
+
+                                {p.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+                                    {p.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50 text-xs">
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>
+                                      {new Date(p.deadline || p.createdAt || Date.now()).toLocaleDateString()}
+                                    </span>
                                   </div>
+                                  <div
+                                    className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-medium text-muted-foreground"
+                                    title={p.manager?.name || "Unassigned"}
+                                  >
+                                    {p.manager?.name?.charAt(0) || "?"}
+                                  </div>
+                                </div>
                               </div>
-                          </div>
                             )}
                           </Draggable>
-                      ))
+                        ))
+                      )}
+                      {provided.placeholder}
+                    </div>
                   )}
-                  {provided.placeholder}
-              </div>
-              )}
-              </Droppable>
-            </motion.div>
-          );
-        })}
-      </div>
+                </Droppable>
+              </motion.div>
+            );
+          })}
+        </div>
       </DragDropContext>
-
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Project" : "Create New Project"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Add a new project board to track development milestones.
+              {editingId ? "Update project details and progress." : "Add a new project board to track development milestones."}
             </DialogDescription>
           </DialogHeader>
+
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
             <div>
-              <Label htmlFor="projName">Project Name</Label>
-              <Input id="projName" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website V2" className="mt-1.5 rounded-xl border-border" required />
+              <Label htmlFor="projName">Project Name *</Label>
+              <Input
+                id="projName"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Website V2"
+                className="mt-1.5 rounded-xl border-border"
+                required
+              />
             </div>
+
             <div>
               <Label htmlFor="projDesc">Description</Label>
-              <Textarea id="projDesc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Objectives, scope, milestones..." className="mt-1.5 rounded-xl border-border" />
+              <Textarea
+                id="projDesc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Objectives, scope, milestones..."
+                className="mt-1.5 rounded-xl border-border"
+              />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="projVenture">Venture</Label>
+                <Label htmlFor="projVenture">Venture *</Label>
                 <select
                   id="projVenture"
                   value={ventureId}
@@ -224,10 +314,13 @@ function ProjectsPage() {
                 >
                   <option value="">Select Venture</option>
                   {ventures?.map((v: any) => (
-                    <option key={v._id} value={v._id}>{v.name}</option>
+                    <option key={v._id || v.id} value={v._id || v.id}>
+                      {v.name}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
                 <Label htmlFor="projManager">Project Manager</Label>
                 <select
@@ -237,17 +330,28 @@ function ProjectsPage() {
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">No Manager</option>
-                  {employees?.filter((emp: any) => !ventureId || emp.venture?._id === ventureId || emp.venture === ventureId).map((emp: any) => (
-                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                  {employees?.map((emp: any) => (
+                    <option key={emp._id || emp.id} value={emp._id || emp.id}>
+                      {emp.name}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
+
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="projBudget">Budget</Label>
-                <Input id="projBudget" type="number" value={budget} onChange={(e) => setBudget(e.target.value)} className="mt-1.5 rounded-xl border-border" required />
+                <Label htmlFor="projBudget">Budget (₹)</Label>
+                <Input
+                  id="projBudget"
+                  type="number"
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  className="mt-1.5 rounded-xl border-border"
+                  required
+                />
               </div>
+
               <div>
                 <Label htmlFor="projPriority">Priority</Label>
                 <select
@@ -262,6 +366,7 @@ function ProjectsPage() {
                   <option value="Critical">Critical</option>
                 </select>
               </div>
+
               <div>
                 <Label htmlFor="projStatus">Status</Label>
                 <select
@@ -278,14 +383,34 @@ function ProjectsPage() {
                 </select>
               </div>
             </div>
+
             <div>
               <Label htmlFor="projDeadline">Deadline</Label>
-              <Input id="projDeadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="mt-1.5 rounded-xl border-border" />
+              <Input
+                id="projDeadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="mt-1.5 rounded-xl border-border"
+              />
             </div>
+
             <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={editingId ? updateProject.isPending : createProject.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
-                {editingId ? (updateProject.isPending ? "Updating..." : "Update Project") : (createProject.isPending ? "Creating..." : "Create Project")}
+              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={editingId ? updateProject.isPending : createProject.isPending}
+                className="rounded-xl gradient-royal text-white hover:opacity-90"
+              >
+                {editingId
+                  ? updateProject.isPending
+                    ? "Updating..."
+                    : "Update Project"
+                  : createProject.isPending
+                  ? "Creating..."
+                  : "Create Project"}
               </Button>
             </DialogFooter>
           </form>

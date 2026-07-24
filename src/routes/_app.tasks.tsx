@@ -2,12 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui-ext/section-card";
-import { ClipboardList, Plus, Clock, Trash2, Edit2 } from "lucide-react";
-import { motion } from "framer-motion";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays } from "lucide-react";
+import { ClipboardList, Plus, Clock, Trash2, Edit2, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
-import { Calendar } from "@/components/ui/calendar";
 import { useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees, useVentures, useDeleteTask, useUpdateTask } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
@@ -30,19 +26,20 @@ export const Route = createFileRoute("/_app/tasks")({
   component: TasksPage,
 });
 
-function TasksPage() {
-  const [date, setDate] = useState<Date | undefined>(new Date());
-  
+const taskStatuses = ["Pending", "In Progress", "Review", "Completed"];
+
+export function TasksPage() {
   const { data: tasks, isLoading } = useTasks();
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
   const { data: ventures } = useVentures();
-  
+
   const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
   const updateTaskStatus = useUpdateTaskStatus();
   const deleteTask = useDeleteTask();
   const { user } = useAuthStore();
-  const isAdmin = user?.role?.toUpperCase() === "ADMIN";
+  const isAdmin = user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "MANAGER";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -55,6 +52,32 @@ function TasksPage() {
   const [status, setStatus] = useState("Pending");
   const [deadline, setDeadline] = useState("");
 
+  const openNew = () => {
+    setEditingId(null);
+    setTitle("");
+    setDescription("");
+    setProjectId("");
+    setVentureId(ventures && ventures.length > 0 ? ventures[0]._id : "");
+    setAssigneeId("");
+    setPriority("Medium");
+    setStatus("Pending");
+    setDeadline("");
+    setOpen(true);
+  };
+
+  const openEdit = (t: any) => {
+    setEditingId(t._id || t.id);
+    setTitle(t.title || "");
+    setDescription(t.description || "");
+    setProjectId(t.project?._id || t.project || "");
+    setVentureId(t.venture?._id || t.venture || "");
+    setAssigneeId(t.assignedTo?._id || t.assignedTo || "");
+    setPriority(t.priority || "Medium");
+    setStatus(t.status || "Pending");
+    setDeadline(t.deadline ? new Date(t.deadline).toISOString().split("T")[0] : "");
+    setOpen(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !ventureId) {
@@ -62,7 +85,7 @@ function TasksPage() {
       return;
     }
 
-    createTask.mutate({
+    const payload = {
       title,
       description,
       project: projectId || null,
@@ -70,24 +93,52 @@ function TasksPage() {
       assignedTo: assigneeId || null,
       priority,
       status,
-      deadline: deadline ? new Date(deadline).toISOString() : undefined
-    }, {
-      onSuccess: () => {
-        toast.success("Task created successfully");
-        setOpen(false);
-        setTitle("");
-        setDescription("");
-        setProjectId("");
-        setVentureId("");
-        setAssigneeId("");
-        setPriority("Medium");
-        setStatus("Pending");
-        setDeadline("");
-      },
-      onError: (err: any) => {
-        toast.error(err.response?.data?.message || "Failed to create task");
+      deadline: deadline ? new Date(deadline).toISOString() : undefined,
+    };
+
+    if (editingId) {
+      updateTask.mutate(
+        { id: editingId, data: payload },
+        {
+          onSuccess: () => {
+            toast.success("Task updated successfully");
+            setOpen(false);
+          },
+          onError: (err: any) => {
+            toast.error(err.response?.data?.message || "Failed to update task");
+          },
+        }
+      );
+    } else {
+      createTask.mutate(payload, {
+        onSuccess: () => {
+          toast.success("Task created successfully");
+          setOpen(false);
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to create task");
+        },
+      });
+    }
+  };
+
+  const handleStatusChange = (id: string, newStatus: string) => {
+    updateTaskStatus.mutate(
+      { id, status: newStatus },
+      {
+        onSuccess: () => toast.success(`Task moved to ${newStatus}`),
+        onError: () => toast.error("Failed to update status"),
       }
-    });
+    );
+  };
+
+  const handleDelete = (id: string, taskTitle: string) => {
+    if (confirm(`Are you sure you want to delete task "${taskTitle}"?`)) {
+      deleteTask.mutate(id, {
+        onSuccess: () => toast.success("Task deleted successfully"),
+        onError: (err: any) => toast.error(err.response?.data?.message || "Failed to delete task"),
+      });
+    }
   };
 
   return (
@@ -102,120 +153,145 @@ function TasksPage() {
         }
       />
 
-      <Tabs defaultValue="list">
-        <TabsList className="mb-4 rounded-xl">
-          <TabsTrigger value="list">List</TabsTrigger>
-          <TabsTrigger value="calendar" className="gap-1.5">
-            <CalendarDays className="h-4 w-4" /> Calendar
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="list">
-          <SectionCard title="All tasks" description={`${tasks?.length || 0} tasks found`}>
-            {isLoading ? (
-                <div className="py-20 text-center text-muted-foreground">Loading tasks...</div>
-            ) : !tasks || tasks.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-center justify-center py-20 text-center gap-4"
-                >
-                  <div className="grid h-20 w-20 place-items-center rounded-3xl gradient-royal text-white shadow-elevated">
-                    <ClipboardList className="h-9 w-9" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold">No tasks yet</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Create tasks and assign them to team members to track progress.
-                    </p>
-                  </div>
-                  <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
-                    <Plus className="h-4 w-4" /> New task
-                  </Button>
-                </motion.div>
-            ) : (
-                <div className="mt-4 space-y-3">
-                    {tasks.map((task: any) => (
-                        <div key={task._id} className="p-4 rounded-xl bg-card border border-border flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-3 h-3 rounded-full ${task.status === 'Completed' ? 'bg-emerald' : task.status === 'In Progress' ? 'bg-gold' : 'bg-royal'}`} />
-                                <div>
-                                    <h4 className="font-medium text-foreground">{task.title}</h4>
-                                    <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] uppercase font-semibold tracking-wider">
-                                            {task.priority}
-                                        </Badge>
-                                        <span>•</span>
-                                        <span className="text-primary font-medium text-xs">{task.venture?.name || 'No Venture'}</span>
-                                        <span>•</span>
-                                        <span>Project: {task.project?.name || 'None'}</span>
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className="text-right hidden md:block">
-                                    <p className="text-sm font-medium text-foreground">{task.assignedTo?.name || 'Unassigned'}</p>
-                                    <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end mt-1">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        {task.deadline ? new Date(task.deadline).toLocaleDateString() : 'No deadline'}
-                                    </p>
-                                </div>
-                                {task.status !== 'Completed' && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="rounded-lg border-emerald/30 text-emerald hover:bg-emerald/10 cursor-pointer"
-                                      onClick={() => {
-                                        updateTaskStatus.mutate({ id: task._id, status: 'Completed' }, {
-                                          onSuccess: () => toast.success("Task marked as completed!")
-                                        });
-                                      }}
-                                    >
-                                      Complete
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-          </SectionCard>
-        </TabsContent>
-
-        <TabsContent value="calendar">
-          <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-4">
-            <SectionCard title="Calendar">
-              <Calendar mode="single" selected={date} onSelect={setDate} className="rounded-xl" />
-            </SectionCard>
-            <SectionCard title="Deadlines this week">
-              <p className="text-sm text-muted-foreground py-8 text-center">Calendar view coming soon</p>
-            </SectionCard>
+      <SectionCard title="Task Board" icon={<ClipboardList className="h-5 w-5" />}>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading tasks...</div>
+        ) : !tasks || tasks.length === 0 ? (
+          <div className="py-12 text-center flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <ClipboardList className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-base">No tasks found</h3>
+              <p className="text-sm text-muted-foreground">Create a new task to organize your workflow.</p>
+            </div>
+            <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
+              <Plus className="h-4 w-4" /> New task
+            </Button>
           </div>
-        </TabsContent>
-      </Tabs>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {taskStatuses.map((st) => {
+              const statusTasks = tasks.filter((t: any) => t.status === st);
+              return (
+                <div key={st} className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col min-h-[300px]">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">{st}</h3>
+                    <Badge variant="secondary" className="rounded-full">
+                      {statusTasks.length}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    {statusTasks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-6">No tasks in {st}</p>
+                    ) : (
+                      statusTasks.map((t: any) => (
+                        <div
+                          key={t._id || t.id}
+                          className="p-3 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-1">
+                              <h4 className="font-medium text-sm text-foreground">{t.title}</h4>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => openEdit(t)}
+                                  className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDelete(t._id || t.id, t.title)}
+                                    className="p-1 text-muted-foreground hover:text-rose-500 rounded"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {t.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{t.description}</p>
+                            )}
+                          </div>
+
+                          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-xs">
+                            <select
+                              value={t.status}
+                              onChange={(e) => handleStatusChange(t._id || t.id, e.target.value)}
+                              className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none"
+                            >
+                              {taskStatuses.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] rounded-md ${
+                                t.priority === "Critical"
+                                  ? "text-rose-500 border-rose-500/30"
+                                  : t.priority === "High"
+                                  ? "text-amber-500 border-amber-500/30"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {t.priority || "Medium"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Task" : "Create New Task"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Define a task and assign it to employees.
+              {editingId ? "Update task information and assignments." : "Add a new task to your team workflow."}
             </DialogDescription>
           </DialogHeader>
+
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
             <div>
-              <Label htmlFor="tTitle">Task Title</Label>
-              <Input id="tTitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Design Dashboard UI" className="mt-1.5 rounded-xl border-border" required />
+              <Label htmlFor="taskTitle">Task Title *</Label>
+              <Input
+                id="taskTitle"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Design Landing Page"
+                className="mt-1.5 rounded-xl border-border"
+                required
+              />
             </div>
+
             <div>
-              <Label htmlFor="tDesc">Description</Label>
-              <Textarea id="tDesc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detailed requirements..." className="mt-1.5 rounded-xl border-border" />
+              <Label htmlFor="taskDesc">Description</Label>
+              <Textarea
+                id="taskDesc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Detailed instructions or acceptance criteria..."
+                className="mt-1.5 rounded-xl border-border"
+              />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="tVenture">Venture</Label>
+                <Label htmlFor="taskVenture">Venture *</Label>
                 <select
-                  id="tVenture"
+                  id="taskVenture"
                   value={ventureId}
                   onChange={(e) => setVentureId(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
@@ -223,50 +299,55 @@ function TasksPage() {
                 >
                   <option value="">Select Venture</option>
                   {ventures?.map((v: any) => (
-                    <option key={v._id} value={v._id}>{v.name}</option>
+                    <option key={v._id || v.id} value={v._id || v.id}>
+                      {v.name}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <Label htmlFor="tProject">Project</Label>
+                <Label htmlFor="taskProject">Project</Label>
                 <select
-                  id="tProject"
+                  id="taskProject"
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">No Project</option>
-                  {projects?.filter((p: any) => !ventureId || p.venture?._id === ventureId || p.venture === ventureId).map((proj: any) => (
-                    <option key={proj._id} value={proj._id}>{proj.name}</option>
-                  ))}
+                  {projects
+                    ?.filter((p: any) => !ventureId || p.venture?._id === ventureId || p.venture === ventureId)
+                    .map((p: any) => (
+                      <option key={p._id || p.id} value={p._id || p.id}>
+                        {p.name}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="tAssignee">Assignee</Label>
+                <Label htmlFor="taskAssignee">Assignee</Label>
                 <select
-                  id="tAssignee"
+                  id="taskAssignee"
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
                   <option value="">Unassigned</option>
-                  {employees?.filter((emp: any) => !ventureId || emp.venture?._id === ventureId || emp.venture === ventureId).map((emp: any) => (
-                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                  {employees?.map((emp: any) => (
+                    <option key={emp._id || emp.id} value={emp._id || emp.id}>
+                      {emp.name}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <Label htmlFor="tDeadline">Deadline</Label>
-                <Input id="tDeadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="mt-1.5 rounded-xl border-border" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="tPriority">Priority</Label>
+                <Label htmlFor="taskPriority">Priority</Label>
                 <select
-                  id="tPriority"
+                  id="taskPriority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
@@ -277,10 +358,11 @@ function TasksPage() {
                   <option value="Critical">Critical</option>
                 </select>
               </div>
+
               <div>
-                <Label htmlFor="tStatus">Status</Label>
+                <Label htmlFor="taskStatus">Status</Label>
                 <select
-                  id="tStatus"
+                  id="taskStatus"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
@@ -292,10 +374,34 @@ function TasksPage() {
                 </select>
               </div>
             </div>
+
+            <div>
+              <Label htmlFor="taskDeadline">Deadline</Label>
+              <Input
+                id="taskDeadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="mt-1.5 rounded-xl border-border"
+              />
+            </div>
+
             <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={editingId ? updateTask.isPending : createTask.isPending} className="rounded-xl gradient-royal text-white hover:opacity-90">
-                {editingId ? (updateTask.isPending ? "Updating..." : "Update Task") : (createTask.isPending ? "Creating..." : "Create Task")}
+              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={editingId ? updateTask.isPending : createTask.isPending}
+                className="rounded-xl gradient-royal text-white hover:opacity-90"
+              >
+                {editingId
+                  ? updateTask.isPending
+                    ? "Updating..."
+                    : "Update Task"
+                  : createTask.isPending
+                  ? "Creating..."
+                  : "Create Task"}
               </Button>
             </DialogFooter>
           </form>

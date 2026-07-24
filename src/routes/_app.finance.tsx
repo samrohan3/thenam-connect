@@ -158,23 +158,23 @@ function FinancePage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          <SectionCard title="Company Wallet" className="bg-card text-white">
-              <div className="text-3xl font-bold mt-2">
+          <SectionCard title="Company Wallet" className="bg-card">
+              <div className="text-3xl font-bold mt-2 text-foreground">
                   ₹{isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Money In Today" className="bg-card text-white">
-              <div className="text-3xl font-bold mt-2 text-emerald-400">
+          <SectionCard title="Money In Today" className="bg-card">
+              <div className="text-3xl font-bold mt-2 text-emerald-500 font-extrabold">
                   ₹{isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Money Out Today" className="bg-card text-white">
-              <div className="text-3xl font-bold mt-2 text-rose-400">
+          <SectionCard title="Money Out Today" className="bg-card">
+              <div className="text-3xl font-bold mt-2 text-rose-500 font-extrabold">
                   ₹{isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
               </div>
           </SectionCard>
-          <SectionCard title="Monthly Profit" className="bg-card text-white">
-              <div className="text-3xl font-bold mt-2 text-royal">
+          <SectionCard title="Monthly Profit" className="bg-card">
+              <div className="text-3xl font-bold mt-2 text-indigo-500 font-extrabold">
                   ₹{isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
               </div>
           </SectionCard>
@@ -221,15 +221,15 @@ function FinancePage() {
                     <tbody>
                         {txs.map((tx: any) => (
                             <tr key={tx._id} className="border-b border-border bg-card/50">
-                                <td className="px-4 py-3 font-medium">{tx.referenceNumber}</td>
+                                <td className="px-4 py-3 font-medium text-foreground">{tx.referenceNumber}</td>
                                 <td className="px-4 py-3 text-xs font-semibold text-primary">{tx.venture?.name || "None"}</td>
                                 <td className="px-4 py-3">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ₹{tx.type === 'Money In' ? 'bg-emerald/10 text-emerald' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-400' : 'bg-royal/10 text-royal'}`}>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${tx.type === 'Money In' ? 'bg-emerald-500/10 text-emerald-500' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500'}`}>
                                         {tx.type}
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
-                                <td className="px-4 py-3 font-semibold">₹{tx.amount.toLocaleString()}</td>
+                                <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
                                 <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
                             </tr>
                         ))}
