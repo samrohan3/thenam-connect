@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppVenturesRouteImport } from './routes/_app.ventures'
+import { Route as AppTeamsRouteImport } from './routes/_app.teams'
 import { Route as AppTeamRouteImport } from './routes/_app.team'
 import { Route as AppTasksRouteImport } from './routes/_app.tasks'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
@@ -41,6 +42,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppVenturesRoute = AppVenturesRouteImport.update({
   id: '/ventures',
   path: '/ventures',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTeamsRoute = AppTeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTeamRoute = AppTeamRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/tasks': typeof AppTasksRoute
   '/team': typeof AppTeamRoute
+  '/teams': typeof AppTeamsRoute
   '/ventures': typeof AppVenturesRoute
 }
 export interface FileRoutesByTo {
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/tasks': typeof AppTasksRoute
   '/team': typeof AppTeamRoute
+  '/teams': typeof AppTeamsRoute
   '/ventures': typeof AppVenturesRoute
   '/': typeof AppIndexRoute
 }
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tasks': typeof AppTasksRoute
   '/_app/team': typeof AppTeamRoute
+  '/_app/teams': typeof AppTeamsRoute
   '/_app/ventures': typeof AppVenturesRoute
   '/_app/': typeof AppIndexRoute
 }
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tasks'
     | '/team'
+    | '/teams'
     | '/ventures'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tasks'
     | '/team'
+    | '/teams'
     | '/ventures'
     | '/'
   id:
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/tasks'
     | '/_app/team'
+    | '/_app/teams'
     | '/_app/ventures'
     | '/_app/'
   fileRoutesById: FileRoutesById
@@ -223,6 +235,13 @@ declare module '@tanstack/react-router' {
       path: '/ventures'
       fullPath: '/ventures'
       preLoaderRoute: typeof AppVenturesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/teams': {
+      id: '/_app/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof AppTeamsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/team': {
@@ -309,6 +328,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppTasksRoute: typeof AppTasksRoute
   AppTeamRoute: typeof AppTeamRoute
+  AppTeamsRoute: typeof AppTeamsRoute
   AppVenturesRoute: typeof AppVenturesRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -324,6 +344,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppTasksRoute: AppTasksRoute,
   AppTeamRoute: AppTeamRoute,
+  AppTeamsRoute: AppTeamsRoute,
   AppVenturesRoute: AppVenturesRoute,
   AppIndexRoute: AppIndexRoute,
 }

@@ -23,8 +23,14 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
-  message: 'Too many requests from this IP, please try again later.'
+  max: parseInt(process.env.RATE_LIMIT_MAX || '2000', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.'
+  },
+  skip: (req) => process.env.NODE_ENV === 'development' || process.env.DISABLE_RATE_LIMIT === 'true'
 });
 app.use('/api', limiter);
 

@@ -4,13 +4,11 @@ import {
   LayoutDashboard,
   Briefcase,
   Wallet,
-  BarChart3,
   Users,
+  Users2,
   FolderKanban,
   CheckSquare,
-  MessagesSquare,
   Trophy,
-  FolderArchive,
   FileBarChart,
   Settings,
   LogOut,
@@ -18,16 +16,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute, normalizeRole } from "@/lib/permissions";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+
 const nav: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/ventures", label: "Ventures", icon: Briefcase },
+  { to: "/teams", label: "Teams", icon: Users2 },
+  { to: "/team", label: "Employees", icon: Users },
   { to: "/finance", label: "Finance", icon: Wallet },
-  { to: "/team", label: "Team", icon: Users },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
   { to: "/rewards", label: "Rewards", icon: Trophy },
+  { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -39,6 +42,11 @@ export function AppSidebar({
   onToggle: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user, logout } = useAuthStore();
+  const role = normalizeRole(user?.role);
+
+  // Filter navigation items based on role permissions
+  const visibleNav = nav.filter((item) => canAccessRoute(user?.role, item.to));
 
   return (
     <aside
@@ -70,7 +78,7 @@ export function AppSidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {nav.map((item) => {
+        {visibleNav.map((item) => {
           const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
           const Icon = item.icon;
           return (
@@ -100,18 +108,19 @@ export function AppSidebar({
       <div className="border-t border-sidebar-border p-3">
         <div className={cn("flex items-center gap-3 rounded-xl px-2 py-2", !collapsed && "bg-white/5")}>
           <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white/10">
-            <AvatarImage src="https://i.pravatar.cc/100?img=12" />
-            <AvatarFallback>TS</AvatarFallback>
+            <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name || "User"}`} />
+            <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
           </Avatar>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-white">Aarav Sharma</p>
-              <p className="truncate text-[11px] text-white/50">Admin · Founder</p>
+              <p className="truncate text-xs font-semibold text-white">{user?.name || "Logged User"}</p>
+              <p className="truncate text-[11px] font-medium text-emerald-400">{role}</p>
             </div>
           )}
           {!collapsed && (
             <Link
               to="/login"
+              onClick={logout}
               className="grid h-8 w-8 place-items-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white transition"
               aria-label="Logout"
             >

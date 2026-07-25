@@ -20,6 +20,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { canAccessRoute, hasPermission } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
+import { RoleGuard } from "@/components/rbac/RoleGuard";
 
 export const Route = createFileRoute("/_app/tasks")({
   head: () => ({ meta: [{ title: "Tasks — Thenam ERP" }] }),
@@ -29,6 +32,13 @@ export const Route = createFileRoute("/_app/tasks")({
 const taskStatuses = ["Pending", "In Progress", "Review", "Completed"];
 
 export function TasksPage() {
+  const { user } = useAuthStore();
+
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/tasks")) {
+    return <AccessDenied resource="Tasks" />;
+  }
+
   const { data: tasks, isLoading } = useTasks();
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
@@ -38,8 +48,6 @@ export function TasksPage() {
   const updateTask = useUpdateTask();
   const updateTaskStatus = useUpdateTaskStatus();
   const deleteTask = useDeleteTask();
-  const { user } = useAuthStore();
-  const isAdmin = user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "MANAGER";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,19 +149,25 @@ export function TasksPage() {
     }
   };
 
+  const canCreate = hasPermission(user?.role, "tasks", "create");
+  const canEdit = hasPermission(user?.role, "tasks", "update");
+  const canDelete = hasPermission(user?.role, "tasks", "delete");
+
   return (
     <PageContainer>
       <PageHeader
         title="Tasks"
         subtitle="Everything on your plate — timelines, priorities, progress."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
-            <Plus className="h-4 w-4" /> New task
-          </Button>
+          <RoleGuard resource="tasks" action="create">
+            <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
+              <Plus className="h-4 w-4" /> New task
+            </Button>
+          </RoleGuard>
         }
       />
 
-      <SectionCard title="Task Board" icon={<ClipboardList className="h-5 w-5" />}>
+      <SectionCard title="Task Board">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">Loading tasks...</div>
         ) : !tasks || tasks.length === 0 ? (
@@ -165,9 +179,11 @@ export function TasksPage() {
               <h3 className="font-semibold text-base">No tasks found</h3>
               <p className="text-sm text-muted-foreground">Create a new task to organize your workflow.</p>
             </div>
-            <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
-              <Plus className="h-4 w-4" /> New task
-            </Button>
+            {canCreate && (
+              <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
+                <Plus className="h-4 w-4" /> New task
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -194,22 +210,26 @@ export function TasksPage() {
                           <div>
                             <div className="flex items-start justify-between gap-1">
                               <h4 className="font-medium text-sm text-foreground">{t.title}</h4>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => openEdit(t)}
-                                  className="p-1 text-muted-foreground hover:text-foreground rounded"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={() => handleDelete(t._id || t.id, t.title)}
-                                    className="p-1 text-muted-foreground hover:text-rose-500 rounded"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
+                              {(canEdit || canDelete) && (
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {canEdit && (
+                                    <button
+                                      onClick={() => openEdit(t)}
+                                      className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {canDelete && (
+                                    <button
+                                      onClick={() => handleDelete(t._id || t.id, t.title)}
+                                      className="p-1 text-muted-foreground hover:text-rose-500 rounded"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {t.description && (
@@ -220,8 +240,9 @@ export function TasksPage() {
                           <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-xs">
                             <select
                               value={t.status}
+                              disabled={!canEdit}
                               onChange={(e) => handleStatusChange(t._id || t.id, e.target.value)}
-                              className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none"
+                              className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none disabled:opacity-70"
                             >
                               {taskStatuses.map((s) => (
                                 <option key={s} value={s}>

@@ -1,19 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/taskController');
-const { protect } = require('../middleware/auth');
+const { protect, canAccess } = require('../middleware/auth');
 
 router.use(protect);
 
 router.route('/')
-    .get(taskController.getTasks)
-    .post(taskController.createTask);
+    .get(canAccess('tasks', 'read'), taskController.getTasks)
+    .post(canAccess('tasks', 'create'), taskController.createTask);
 
 router.route('/:id')
-    .get(taskController.getTask)
-    .put(taskController.updateTask)
-    .delete(taskController.deleteTask);
-
-router.patch('/:id/status', taskController.updateTaskStatus);
+    .get(canAccess('tasks', 'read'), taskController.getTask)
+    .put(canAccess('tasks', 'update'), taskController.updateTask)
+    .delete(canAccess('tasks', 'delete'), taskController.deleteTask);
 
 module.exports = router;

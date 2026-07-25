@@ -4,6 +4,9 @@ import { SectionCard } from "@/components/ui-ext/section-card";
 import { Trophy, Award } from "lucide-react";
 import { motion } from "framer-motion";
 import { useRewards } from "@/lib/api-hooks";
+import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
 
 export const Route = createFileRoute("/_app/rewards")({
   head: () => ({ meta: [{ title: "Rewards — Thenam ERP" }] }),
@@ -11,6 +14,13 @@ export const Route = createFileRoute("/_app/rewards")({
 });
 
 function RewardsPage() {
+  const { user } = useAuthStore();
+
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/rewards")) {
+    return <AccessDenied resource="Rewards" />;
+  }
+
   const { data: rewards, isLoading } = useRewards();
 
   return (

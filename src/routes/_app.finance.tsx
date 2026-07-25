@@ -19,6 +19,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds, useVentures } from "@/lib/api-hooks";
+import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
+import { RoleGuard } from "@/components/rbac/RoleGuard";
 
 export const Route = createFileRoute("/_app/finance")({
   head: () => ({ meta: [{ title: "Finance — Thenam ERP" }] }),
@@ -26,10 +30,20 @@ export const Route = createFileRoute("/_app/finance")({
 });
 
 function FinancePage() {
+  const { user } = useAuthStore();
+
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/finance")) {
+    return <AccessDenied resource="Finance" />;
+  }
+
+  const role = normalizeRole(user?.role);
+  const isCustomer = role === "Customer";
+
   const { data: summary, isLoading: isSummaryLoading } = useFinanceSummary();
   const { data: txs, isLoading: isTxsLoading } = useTransactions();
   const { data: ventures } = useVentures();
-  
+
   const addRevenueMutation = useAddRevenue();
   const recordExpenseMutation = useRecordExpense();
   const transferMutation = useTransferFunds();
@@ -150,92 +164,98 @@ function FinancePage() {
     });
   };
 
+  const canCreate = hasPermission(user?.role, "finance", "create");
+
   return (
     <PageContainer>
       <PageHeader
-        title="Finance"
-        subtitle="Wallets, money in and out, and inter-venture transfers across ventures."
+        title={isCustomer ? "My Invoices & Payments" : "Finance"}
+        subtitle={isCustomer ? "View your project invoices and billing statement." : "Wallets, money in and out, and inter-venture transfers across ventures."}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+      {!isCustomer && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <SectionCard title="Company Wallet" className="bg-card">
-              <div className="text-3xl font-bold mt-2 text-foreground">
-                  ₹{isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
-              </div>
+            <div className="text-3xl font-bold mt-2 text-foreground">
+              ₹{isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
+            </div>
           </SectionCard>
           <SectionCard title="Money In Today" className="bg-card">
-              <div className="text-3xl font-bold mt-2 text-emerald-500 font-extrabold">
-                  ₹{isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
-              </div>
+            <div className="text-3xl font-bold mt-2 text-emerald-500 font-extrabold">
+              ₹{isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
+            </div>
           </SectionCard>
           <SectionCard title="Money Out Today" className="bg-card">
-              <div className="text-3xl font-bold mt-2 text-rose-500 font-extrabold">
-                  ₹{isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
-              </div>
+            <div className="text-3xl font-bold mt-2 text-rose-500 font-extrabold">
+              ₹{isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
+            </div>
           </SectionCard>
           <SectionCard title="Monthly Profit" className="bg-card">
-              <div className="text-3xl font-bold mt-2 text-indigo-500 font-extrabold">
-                  ₹{isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
-              </div>
+            <div className="text-3xl font-bold mt-2 text-indigo-500 font-extrabold">
+              ₹{isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
+            </div>
           </SectionCard>
-      </div>
+        </div>
+      )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Button className="rounded-xl gradient-emerald text-white gap-1.5 cursor-pointer" onClick={() => setRevenueOpen(true)}>
-          <Plus className="h-4 w-4" /> Add Revenue
-        </Button>
-        <Button className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] gap-1.5 cursor-pointer" onClick={() => setExpenseOpen(true)}>
-          <Minus className="h-4 w-4" /> Money Out
-        </Button>
-        <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={() => setTransferOpen(true)}>
-          <ArrowRightLeft className="h-4 w-4" /> Transfer Between Ventures
-        </Button>
-      </div>
+      {canCreate && (
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Button className="rounded-xl gradient-emerald text-white gap-1.5 cursor-pointer" onClick={() => setRevenueOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Revenue
+          </Button>
+          <Button className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] gap-1.5 cursor-pointer" onClick={() => setExpenseOpen(true)}>
+            <Minus className="h-4 w-4" /> Money Out
+          </Button>
+          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={() => setTransferOpen(true)}>
+            <ArrowRightLeft className="h-4 w-4" /> Transfer Between Ventures
+          </Button>
+        </div>
+      )}
 
       <SectionCard
-        title="Recent Transactions"
+        title={isCustomer ? "Invoices & Receipts" : "Recent Transactions"}
         className="mt-8"
       >
         {isTxsLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading transactions...</div>
+          <div className="p-8 text-center text-muted-foreground">Loading transactions...</div>
         ) : !txs || txs.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">
-                <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center mb-4">
-                    <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
-                </div>
-                No transactions found. Add revenue or record an expense to get started.
+          <div className="p-12 text-center text-muted-foreground">
+            <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center mb-4">
+              <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
             </div>
+            {isCustomer ? "No invoices found for your account." : "No transactions found."}
+          </div>
         ) : (
-            <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-muted-foreground uppercase bg-card border-b border-border">
-                        <tr>
-                            <th className="px-4 py-3">Reference</th>
-                            <th className="px-4 py-3">Venture</th>
-                            <th className="px-4 py-3">Type</th>
-                            <th className="px-4 py-3">Category</th>
-                            <th className="px-4 py-3">Amount</th>
-                            <th className="px-4 py-3">Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {txs.map((tx: any) => (
-                            <tr key={tx._id} className="border-b border-border bg-card/50">
-                                <td className="px-4 py-3 font-medium text-foreground">{tx.referenceNumber}</td>
-                                <td className="px-4 py-3 text-xs font-semibold text-primary">{tx.venture?.name || "None"}</td>
-                                <td className="px-4 py-3">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${tx.type === 'Money In' ? 'bg-emerald-500/10 text-emerald-500' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500'}`}>
-                                        {tx.type}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
-                                <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
-                                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-muted-foreground uppercase bg-card border-b border-border">
+                <tr>
+                  <th className="px-4 py-3">Reference</th>
+                  <th className="px-4 py-3">Venture</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txs.map((tx: any) => (
+                  <tr key={tx._id} className="border-b border-border bg-card/50">
+                    <td className="px-4 py-3 font-medium text-foreground">{tx.referenceNumber}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-primary">{tx.venture?.name || "None"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${tx.type === 'Money In' ? 'bg-emerald-500/10 text-emerald-500' : tx.type === 'Money Out' ? 'bg-rose-500/10 text-rose-500' : 'bg-indigo-500/10 text-indigo-500'}`}>
+                        {tx.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
+                    <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </SectionCard>
 
@@ -469,4 +489,3 @@ function FinancePage() {
     </PageContainer>
   );
 }
-

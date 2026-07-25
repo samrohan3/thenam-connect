@@ -25,6 +25,9 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
 
 export const Route = createFileRoute("/_app/reports")({
   head: () => ({ meta: [{ title: "Reports — Thenam ERP" }] }),
@@ -43,6 +46,13 @@ const reportTypes = [
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 function ReportsPage() {
+  const { user } = useAuthStore();
+
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/reports")) {
+    return <AccessDenied resource="Reports" />;
+  }
+
   const { data: summary, isLoading: isSumLoading } = useFinanceSummary();
   const { data: stats, isLoading: isStatsLoading } = useDashboardStats();
   const { data: chartData, isLoading: isChartLoading } = useDashboardCharts();
@@ -52,10 +62,10 @@ function ReportsPage() {
   const handleExportCSV = (title = "Financial_Summary_Report") => {
     const csvContent = "data:text/csv;charset=utf-8," 
       + "Metric,Value\n"
-      + `Total Revenue,$${summary?.walletBalance || 0}\n`
-      + `Money In Today,$${summary?.inToday || 0}\n`
-      + `Money Out Today,$${summary?.outToday || 0}\n`
-      + `Monthly Profit,$${summary?.monthProfit || 0}\n`
+      + `Total Revenue,₹${summary?.walletBalance || 0}\n`
+      + `Money In Today,₹${summary?.inToday || 0}\n`
+      + `Money Out Today,₹${summary?.outToday || 0}\n`
+      + `Monthly Profit,₹${summary?.monthProfit || 0}\n`
       + `Active Ventures,${stats?.activeVentures || 0}\n`
       + `Active Projects,${stats?.activeProjects || 0}\n`
       + `Completed Tasks,${stats?.completedTasks || 0}\n`;
@@ -97,7 +107,7 @@ function ReportsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Revenue"
-          value={isSumLoading ? "..." : `$${(summary?.walletBalance || 0).toLocaleString()}`}
+          value={isSumLoading ? "..." : `₹${(summary?.walletBalance || 0).toLocaleString()}`}
           delta="—"
           tone="royal"
           icon={<TrendingUp className="h-5 w-5" />}
@@ -139,7 +149,7 @@ function ReportsPage() {
                 <BarChart data={chartData?.revenueSeries || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="month" tick={{ fill: 'currentColor' }} tickLine={false} axisLine={false} className="text-xs text-muted-foreground" />
-                  <YAxis tickFormatter={(v) => `$${v}`} tick={{ fill: 'currentColor' }} tickLine={false} axisLine={false} className="text-xs text-muted-foreground" />
+                  <YAxis tickFormatter={(v) => `₹${v}`} tick={{ fill: 'currentColor' }} tickLine={false} axisLine={false} className="text-xs text-muted-foreground" />
                   <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderRadius: '12px' }} />
                   <Bar dataKey="revenue" name="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />

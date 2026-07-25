@@ -3,17 +3,24 @@ import {
   TrendingUp,
   Briefcase,
   Users,
+  Users2,
   CheckCircle2,
   ClipboardList,
   Plus,
   Wallet,
-  Activity
+  UserPlus,
+  Layers
 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { StatCard } from "@/components/ui-ext/stat-card";
 import { SectionCard } from "@/components/ui-ext/section-card";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { useDashboardStats, useDashboardCharts, useRecentActivities } from "@/lib/api-hooks";
+import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
+import { RoleGuard } from "@/components/rbac/RoleGuard";
 import {
   AreaChart,
   Area,
@@ -38,27 +45,44 @@ export const Route = createFileRoute("/_app/")(
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const role = normalizeRole(user?.role);
+
   const { data: stats, isLoading: isStatsLoading } = useDashboardStats();
   const { data: chartData, isLoading: isChartsLoading } = useDashboardCharts();
   const { data: recentActivities, isLoading: isActivitiesLoading } = useRecentActivities();
 
+  const canSeeFinance = hasPermission(user?.role, "finance", "read");
+  const canSeeVentures = canAccessRoute(user?.role, "/ventures");
+  const canSeeTeam = canAccessRoute(user?.role, "/team");
+  const canSeeTeams = canAccessRoute(user?.role, "/teams");
+  const canSeeProjects = canAccessRoute(user?.role, "/projects");
+  const canSeeTasks = canAccessRoute(user?.role, "/tasks");
+
+  const quickActions = [
+    { label: "Create venture", tone: "gradient-royal", path: "/ventures", resource: "ventures", action: "create" },
+    { label: "Create team", tone: "gradient-brand", path: "/teams", resource: "teams", action: "create" },
+    { label: "Add employee", tone: "gradient-emerald", path: "/team", resource: "team", action: "create" },
+    { label: "Record payment", tone: "gradient-gold", path: "/finance", resource: "finance", action: "create" },
+  ].filter(a => hasPermission(user?.role, a.resource as any, a.action as any));
+
   return (
     <PageContainer>
       <PageHeader
-        title="Welcome back"
-        subtitle="Live data across Thenam ventures."
+        title={`Welcome back, ${user?.name || "User"}`}
+        subtitle={`${role} Dashboard — Overview across Thenam ventures & teams.`}
         actions={
-          <>
-            <Button variant="outline" className="rounded-xl">Last 30 days</Button>
-            <Button className="rounded-xl gradient-royal text-white hover:opacity-90 gap-1.5" onClick={() => navigate({ to: "/ventures" })}>
+          <RoleGuard resource="ventures" action="create">
+            <Button className="rounded-xl gradient-royal text-white hover:opacity-90 gap-1.5 cursor-pointer" onClick={() => navigate({ to: "/ventures" })}>
               <Plus className="h-4 w-4" /> New venture
             </Button>
-          </>
+          </RoleGuard>
         }
       />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        {canSeeFinance && (
           <StatCard
             label="Total Revenue"
             value={isStatsLoading ? "..." : `₹${stats?.totalRevenue?.toLocaleString() || "0"}`}
@@ -67,6 +91,8 @@ function DashboardPage() {
             icon={<Wallet className="h-5 w-5" />}
             index={0}
           />
+        )}
+        {canSeeFinance && (
           <StatCard
             label="Monthly Profit"
             value={isStatsLoading ? "..." : `₹${stats?.profit?.toLocaleString() || "0"}`}
@@ -75,6 +101,8 @@ function DashboardPage() {
             icon={<TrendingUp className="h-5 w-5" />}
             index={1}
           />
+        )}
+        {canSeeVentures && (
           <StatCard
             label="Active Ventures"
             value={isStatsLoading ? "..." : String(stats?.activeVentures || 0)}
@@ -83,142 +111,213 @@ function DashboardPage() {
             icon={<Briefcase className="h-5 w-5" />}
             index={2}
           />
+        )}
+        {canSeeTeams && (
           <StatCard
-            label="Employees"
-            value={isStatsLoading ? "..." : String(stats?.activeEmployees || 0)}
+            label="Total Teams"
+            value={isStatsLoading ? "..." : String(stats?.totalTeams || 0)}
             delta="—"
             tone="royal"
-            icon={<Users className="h-5 w-5" />}
+            icon={<Users2 className="h-5 w-5" />}
             index={3}
           />
+        )}
+        {canSeeTeam && (
+          <StatCard
+            label="Employees"
+            value={isStatsLoading ? "..." : String(stats?.activeEmployees || stats?.totalEmployees || 0)}
+            delta="—"
+            tone="emerald"
+            icon={<Users className="h-5 w-5" />}
+            index={4}
+          />
+        )}
+        {canSeeProjects && (
           <StatCard
             label="Completed Projects"
             value={isStatsLoading ? "..." : String(stats?.completedProjects || 0)}
             delta="—"
-            tone="emerald"
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            index={4}
-          />
-          <StatCard
-            label="Pending Tasks"
-            value={isStatsLoading ? "..." : String(stats?.pendingTasks || 0)}
-            delta="—"
             tone="gold"
-            icon={<ClipboardList className="h-5 w-5" />}
+            icon={<CheckCircle2 className="h-5 w-5" />}
             index={5}
           />
+        )}
       </div>
 
-      {/* Revenue chart */}
-      <div className="mt-6">
-        <SectionCard
-          title="Revenue overview"
-          description="Revenue vs Expenses this year"
-        >
-          {isChartsLoading ? (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
-              Loading charts...
-            </div>
-          ) : !chartData?.revenueSeries || chartData.revenueSeries.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
-              <div className="text-center space-y-2">
-                <TrendingUp className="h-10 w-10 mx-auto opacity-30" />
-                <p>No financial records this year</p>
-              </div>
-            </div>
+      {/* Team Distribution & Recent Joinings Widgets */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Teams Breakdown Widget */}
+        <SectionCard title="Active Teams Overview" description="Member distribution per team & venture">
+          {isStatsLoading ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">Loading teams data...</div>
+          ) : !stats?.teamDistribution || stats.teamDistribution.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">No active teams created yet.</div>
           ) : (
-            <div className="h-[300px] w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={chartData.revenueSeries}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-royal)" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="var(--color-royal)" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-gold)" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="var(--color-gold)" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fill: 'currentColor' }}
-                    tickLine={false}
-                    axisLine={false}
-                    className="text-xs text-muted-foreground"
-                  />
-                  <YAxis
-                    tickFormatter={(value) => `₹${value}`}
-                    tick={{ fill: 'currentColor' }}
-                    tickLine={false}
-                    axisLine={false}
-                    className="text-xs text-muted-foreground"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                      borderColor: 'rgba(255,255,255,0.1)',
-                      borderRadius: '12px',
-                    }}
-                    labelClassName="text-sm font-semibold text-foreground mb-1"
-                    itemStyle={{ fontSize: '12px' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="revenue"
-                    name="Revenue"
-                    stroke="var(--color-royal)"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorRevenue)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="expense"
-                    name="Expense"
-                    stroke="var(--color-gold)"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorExpense)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="space-y-3 mt-3">
+              {stats.teamDistribution.slice(0, 5).map((t: any, idx: number) => (
+                <div key={idx} className="p-3 rounded-xl bg-card border border-border flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                      <Layers className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{t.teamName}</p>
+                      <p className="text-[10px] text-muted-foreground">{t.ventureName || "Venture Team"}</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {t.memberCount || 0} Members
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Recent Joinings Widget */}
+        <SectionCard title="Recent Joinings" description="Newly onboarded team members">
+          {isStatsLoading ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">Loading recent joinings...</div>
+          ) : !stats?.recentJoinings || stats.recentJoinings.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">No recent employee joinings recorded.</div>
+          ) : (
+            <div className="space-y-3 mt-3">
+              {stats.recentJoinings.map((emp: any) => (
+                <div key={emp._id} className="p-3 rounded-xl bg-card border border-border flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={emp.avatar || emp.photo} />
+                      <AvatarFallback>{emp.name?.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{emp.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{emp.designation || emp.role} • {emp.venture?.name || "Venture"}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className="font-mono text-[10px] text-primary">
+                      {emp.employeeId || "EMP"}
+                    </Badge>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      Joined {new Date(emp.joiningDate || emp.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </SectionCard>
       </div>
 
-      {/* Quick actions and Activity logs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <div className="lg:col-span-2">
+      {/* Revenue chart (Only for roles with finance access) */}
+      {canSeeFinance && (
+        <div className="mt-6">
           <SectionCard
-            title="Quick actions"
-            description="Jump into common workflows"
+            title="Revenue Overview"
+            description="Revenue vs Expenses performance summary"
           >
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              {[
-                { label: "Create venture", tone: "gradient-royal", path: "/ventures" },
-                { label: "Add employee", tone: "gradient-emerald", path: "/team" },
-                { label: "Record payment", tone: "gradient-gold", path: "/finance" },
-                { label: "System settings", tone: "gradient-brand", path: "/settings" },
-              ].map((a) => (
-                <button
-                  key={a.label}
-                  onClick={() => navigate({ to: a.path })}
-                  className={`group relative overflow-hidden rounded-2xl ₹{a.tone} p-5 text-left text-white shadow-elevated card-hover cursor-pointer`}
-                >
-                  <p className="text-sm font-semibold">{a.label}</p>
-                </button>
-              ))}
-            </div>
+            {isChartsLoading ? (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+                Loading charts...
+              </div>
+            ) : !chartData?.revenueSeries || chartData.revenueSeries.length === 0 ? (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+                <div className="text-center space-y-2">
+                  <TrendingUp className="h-10 w-10 mx-auto opacity-30" />
+                  <p>No financial records this year</p>
+                </div>
+              </div>
+            ) : (
+              <div className="h-[300px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={chartData.revenueSeries}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-royal)" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="var(--color-royal)" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-gold)" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="var(--color-gold)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fill: 'currentColor' }}
+                      tickLine={false}
+                      axisLine={false}
+                      className="text-xs text-muted-foreground"
+                    />
+                    <YAxis
+                      tickFormatter={(value) => `₹${value}`}
+                      tick={{ fill: 'currentColor' }}
+                      tickLine={false}
+                      axisLine={false}
+                      className="text-xs text-muted-foreground"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderRadius: '12px',
+                      }}
+                      labelClassName="text-sm font-semibold text-foreground mb-1"
+                      itemStyle={{ fontSize: '12px' }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="revenue"
+                      name="Revenue"
+                      stroke="var(--color-royal)"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorRevenue)"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="expense"
+                      name="Expense"
+                      stroke="var(--color-gold)"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorExpense)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </SectionCard>
         </div>
+      )}
 
-        <div>
+      {/* Quick actions and Activity logs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        {quickActions.length > 0 && (
+          <div className="lg:col-span-2">
+            <SectionCard
+              title="Quick Actions"
+              description="Jump into common workflows"
+            >
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                {quickActions.map((a) => (
+                  <button
+                    key={a.label}
+                    onClick={() => navigate({ to: a.path as any })}
+                    className={`group relative overflow-hidden rounded-2xl ${a.tone} p-5 text-left text-white shadow-elevated card-hover cursor-pointer`}
+                  >
+                    <p className="text-sm font-semibold">{a.label}</p>
+                  </button>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+        )}
+
+        <div className={quickActions.length === 0 ? "lg:col-span-3" : ""}>
           <SectionCard
             title="Recent Activity"
             description="Real-time operational logs"

@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const employeeSchema = new mongoose.Schema(
   {
+    employeeId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true
+    },
     name: {
       type: String,
       required: true,
@@ -19,6 +26,11 @@ const employeeSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true
+    },
+    designation: {
+      type: String,
+      trim: true,
+      default: 'Team Member'
     },
     department: {
       type: String,
@@ -56,7 +68,17 @@ const employeeSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      default: null,
+      index: true
+    },
     avatar: {
+      type: String,
+      default: null
+    },
+    firebaseUid: {
       type: String,
       default: null
     },
@@ -79,7 +101,6 @@ const employeeSchema = new mongoose.Schema(
         ref: 'Project'
       }
     ],
-    // Denormalized performance cache (updated when tasks change)
     performance: {
       tasksCompleted: { type: Number, default: 0 },
       tasksPending: { type: Number, default: 0 },
@@ -87,7 +108,6 @@ const employeeSchema = new mongoose.Schema(
       projectCount: { type: Number, default: 0 },
       rating: { type: Number, default: 0, min: 0, max: 100 }
     },
-    // Reward points total
     rewardPoints: {
       type: Number,
       default: 0
@@ -105,6 +125,19 @@ const employeeSchema = new mongoose.Schema(
   }
 );
 
+// Virtual aliases
+employeeSchema.virtual('ventureId').get(function () {
+  return this.venture;
+});
+
+employeeSchema.virtual('teamId').get(function () {
+  return this.team;
+});
+
+employeeSchema.virtual('photo').get(function () {
+  return this.avatar;
+});
+
 // Virtual: task count
 employeeSchema.virtual('taskCount', {
   ref: 'Task',
@@ -114,6 +147,7 @@ employeeSchema.virtual('taskCount', {
 });
 
 // Indexes
+employeeSchema.index({ venture: 1, team: 1 });
 employeeSchema.index({ venture: 1, department: 1 });
 employeeSchema.index({ status: 1, venture: 1 });
 employeeSchema.index({ rewardPoints: -1 });

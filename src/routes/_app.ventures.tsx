@@ -20,6 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { useAuthStore } from "@/store/authStore";
+import { canAccessRoute, hasPermission } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
+import { RoleGuard } from "@/components/rbac/RoleGuard";
 
 export const Route = createFileRoute("/_app/ventures")({
   head: () => ({ meta: [{ title: "Ventures — Thenam ERP" }] }),
@@ -27,12 +30,17 @@ export const Route = createFileRoute("/_app/ventures")({
 });
 
 function VenturesPage() {
+  const { user } = useAuthStore();
+
+  // Route protection
+  if (!canAccessRoute(user?.role, "/ventures")) {
+    return <AccessDenied resource="Ventures" />;
+  }
+
   const { data: ventures, isLoading } = useVentures();
   const createVenture = useCreateVenture();
   const updateVenture = useUpdateVenture();
   const deleteVenture = useDeleteVenture();
-  const { user } = useAuthStore();
-  const isAdmin = user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "MANAGER";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -107,8 +115,8 @@ function VenturesPage() {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete venture "${name}"?`)) {
+  const handleDelete = (id: string, vName: string) => {
+    if (confirm(`Are you sure you want to delete venture "${vName}"?`)) {
       deleteVenture.mutate(id, {
         onSuccess: () => toast.success("Venture deleted successfully"),
         onError: (err: any) => toast.error(err.response?.data?.message || "Failed to delete venture"),
@@ -116,19 +124,25 @@ function VenturesPage() {
     }
   };
 
+  const canCreate = hasPermission(user?.role, "ventures", "create");
+  const canEdit = hasPermission(user?.role, "ventures", "update");
+  const canDelete = hasPermission(user?.role, "ventures", "delete");
+
   return (
     <PageContainer>
       <PageHeader
         title="Ventures"
         subtitle="Manage company ventures and business units."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
-            <Plus className="h-4 w-4" /> Add Venture
-          </Button>
+          <RoleGuard resource="ventures" action="create">
+            <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
+              <Plus className="h-4 w-4" /> Add Venture
+            </Button>
+          </RoleGuard>
         }
       />
 
-      <SectionCard title="All Ventures" icon={<Building2 className="h-5 w-5" />}>
+      <SectionCard title="All Ventures">
         {isLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">Loading ventures...</div>
         ) : !ventures || ventures.length === 0 ? (
@@ -140,9 +154,11 @@ function VenturesPage() {
               <h3 className="font-semibold text-base">No ventures found</h3>
               <p className="text-sm text-muted-foreground">Create your first venture to get started.</p>
             </div>
-            <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
-              <Plus className="h-4 w-4" /> Add Venture
-            </Button>
+            {canCreate && (
+              <Button className="rounded-xl gradient-royal text-white gap-1.5 mt-2 cursor-pointer" onClick={openNew}>
+                <Plus className="h-4 w-4" /> Add Venture
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -180,26 +196,30 @@ function VenturesPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2 mt-6 pt-3 border-t border-border/50">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-lg h-8 px-2.5 text-xs"
-                    onClick={() => openEdit(v)}
-                  >
-                    <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
-                  </Button>
-                  {isAdmin && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="rounded-lg h-8 px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                      onClick={() => handleDelete(v._id || v.id, v.name)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                    </Button>
-                  )}
-                </div>
+                {(canEdit || canDelete) && (
+                  <div className="flex items-center justify-end gap-2 mt-6 pt-3 border-t border-border/50">
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-lg h-8 px-2.5 text-xs"
+                        onClick={() => openEdit(v)}
+                      >
+                        <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-lg h-8 px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                        onClick={() => handleDelete(v._id || v.id, v.name)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

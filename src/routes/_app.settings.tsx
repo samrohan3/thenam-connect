@@ -14,6 +14,8 @@ import { useSettings, useUpdateSettings, useUsers, useUpdateProfile, useChangePa
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Settings — Thenam ERP" }] }),
@@ -24,6 +26,15 @@ function SettingsPage() {
   const { theme, toggle } = useTheme();
   const { user, checkAuth } = useAuthStore();
   
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/settings")) {
+    return <AccessDenied resource="Settings" />;
+  }
+
+  const currentRole = normalizeRole(user?.role);
+  const canAccessCompany = hasPermission(user?.role, "company_settings", "read");
+  const canAccessUsers = hasPermission(user?.role, "user_management", "read");
+
   // Queries & Mutations
   const { data: settings } = useSettings();
   const { data: users, isLoading: isUsersLoading } = useUsers();
@@ -134,8 +145,8 @@ function SettingsPage() {
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="theme">Theme</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          <TabsTrigger value="company">Company</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
+          {canAccessCompany && <TabsTrigger value="company">Company</TabsTrigger>}
+          {canAccessUsers && <TabsTrigger value="users">User Management</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="profile">
@@ -146,7 +157,7 @@ function SettingsPage() {
                   <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name}`} />
                   <AvatarFallback>{firstName.charAt(0)}{lastName.charAt(0)}</AvatarFallback>
                 </Avatar>
-                <span className="text-xs text-muted-foreground capitalize font-semibold tracking-wide border border-border/60 px-2 py-0.5 rounded-full bg-card">{user?.role}</span>
+                <span className="text-xs text-emerald-400 font-semibold tracking-wide border border-border/60 px-2.5 py-0.5 rounded-full bg-card">{currentRole}</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 <div><Label htmlFor="sFirstName">First name</Label><Input id="sFirstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="mt-1.5 rounded-xl border-border" required /></div>
@@ -223,47 +234,51 @@ function SettingsPage() {
           </SectionCard>
         </TabsContent>
 
-        <TabsContent value="company">
-          <SectionCard title="Company details" description="Legal and workspace information">
-            <form onSubmit={handleCompanySubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><Label htmlFor="cName">Company name</Label><Input id="cName" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="mt-1.5 rounded-xl border-border" required /></div>
-              <div><Label htmlFor="cDom">Domain</Label><Input id="cDom" value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
-              <div><Label htmlFor="cReg">Registration</Label><Input id="cReg" value={companyReg} onChange={(e) => setCompanyReg(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
-              <div><Label htmlFor="cFis">Fiscal year</Label><Input id="cFis" value={companyFiscal} onChange={(e) => setCompanyFiscal(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
-              <div className="md:col-span-2"><Label htmlFor="cAddr">Head office address</Label><Input id="cAddr" value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
-              <div className="md:col-span-2 flex justify-end pt-2">
-                <Button type="submit" disabled={updateSettings.isPending} className="rounded-xl gradient-royal text-white cursor-pointer">
-                  {updateSettings.isPending ? "Saving..." : "Save company details"}
-                </Button>
-              </div>
-            </form>
-          </SectionCard>
-        </TabsContent>
+        {canAccessCompany && (
+          <TabsContent value="company">
+            <SectionCard title="Company details" description="Legal and workspace information">
+              <form onSubmit={handleCompanySubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><Label htmlFor="cName">Company name</Label><Input id="cName" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="mt-1.5 rounded-xl border-border" required /></div>
+                <div><Label htmlFor="cDom">Domain</Label><Input id="cDom" value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
+                <div><Label htmlFor="cReg">Registration</Label><Input id="cReg" value={companyReg} onChange={(e) => setCompanyReg(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
+                <div><Label htmlFor="cFis">Fiscal year</Label><Input id="cFis" value={companyFiscal} onChange={(e) => setCompanyFiscal(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
+                <div className="md:col-span-2"><Label htmlFor="cAddr">Head office address</Label><Input id="cAddr" value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} className="mt-1.5 rounded-xl border-border" /></div>
+                <div className="md:col-span-2 flex justify-end pt-2">
+                  <Button type="submit" disabled={updateSettings.isPending} className="rounded-xl gradient-royal text-white cursor-pointer">
+                    {updateSettings.isPending ? "Saving..." : "Save company details"}
+                  </Button>
+                </div>
+              </form>
+            </SectionCard>
+          </TabsContent>
+        )}
 
-        <TabsContent value="users">
-          <SectionCard
-            title="User management"
-            description="Invite and manage workspace members"
-          >
-            <ul className="divide-y divide-border">
-              {isUsersLoading ? (
-                <div className="py-8 text-center text-xs text-muted-foreground">Loading workspace users...</div>
-              ) : !users || users.length === 0 ? (
-                <div className="py-8 text-center text-xs text-muted-foreground">No users found.</div>
-              ) : (
-                users.map((u: any) => (
-                  <li key={u._id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{u.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{u.email}</p>
-                    </div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary capitalize">{u.role}</span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </SectionCard>
-        </TabsContent>
+        {canAccessUsers && (
+          <TabsContent value="users">
+            <SectionCard
+              title="User Management"
+              description="Workspace users and role permissions"
+            >
+              <ul className="divide-y divide-border">
+                {isUsersLoading ? (
+                  <div className="py-8 text-center text-xs text-muted-foreground">Loading workspace users...</div>
+                ) : !users || users.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-muted-foreground">No users found.</div>
+                ) : (
+                  users.map((u: any) => (
+                    <li key={u._id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{u.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-400 capitalize">{normalizeRole(u.role)}</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </SectionCard>
+          </TabsContent>
+        )}
       </Tabs>
       <Toaster />
     </PageContainer>

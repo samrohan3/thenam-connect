@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const settingsController = require('../controllers/settingsController');
-const { protect } = require('../middleware/auth');
+const { protect, canAccess } = require('../middleware/auth');
 
 router.use(protect);
 
 router.route('/')
-    .get(settingsController.getSettings)
-    .put(settingsController.updateSettings);
+    .get(canAccess('settings', 'read'), settingsController.getSettings)
+    .put(canAccess('settings', 'update'), settingsController.updateSettings);
 
 module.exports = router;

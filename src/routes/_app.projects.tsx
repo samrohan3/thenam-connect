@@ -22,6 +22,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { canAccessRoute, hasPermission } from "@/lib/permissions";
+import { AccessDenied } from "@/components/rbac/AccessDenied";
+import { RoleGuard } from "@/components/rbac/RoleGuard";
 
 export const Route = createFileRoute("/_app/projects")({
   head: () => ({ meta: [{ title: "Projects — Thenam ERP" }] }),
@@ -43,14 +46,19 @@ const columnAccent: Record<string, string> = {
 };
 
 function ProjectsPage() {
+  const { user } = useAuthStore();
+
+  // Route Protection Check
+  if (!canAccessRoute(user?.role, "/projects")) {
+    return <AccessDenied resource="Projects" />;
+  }
+
   const { data: projects, isLoading } = useProjects();
   const { data: ventures } = useVentures();
   const { data: employees } = useEmployees();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
-  const { user } = useAuthStore();
-  const isAdmin = user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "MANAGER";
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -156,15 +164,20 @@ function ProjectsPage() {
     }
   };
 
+  const canEdit = hasPermission(user?.role, "projects", "update");
+  const canDelete = hasPermission(user?.role, "projects", "delete");
+
   return (
     <PageContainer>
       <PageHeader
         title="Projects"
         subtitle="Track work across every stage of delivery."
         actions={
-          <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
-            <Plus className="h-4 w-4" /> New project
-          </Button>
+          <RoleGuard resource="projects" action="create">
+            <Button className="rounded-xl gradient-royal text-white gap-1.5 cursor-pointer" onClick={openNew}>
+              <Plus className="h-4 w-4" /> New project
+            </Button>
+          </RoleGuard>
         }
       />
 
@@ -216,22 +229,26 @@ function ProjectsPage() {
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <h4 className="font-medium text-sm text-foreground mb-1">{p.name}</h4>
-                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => openEdit(p)}
-                                      className="p-1 text-muted-foreground hover:text-foreground rounded"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    {isAdmin && (
-                                      <button
-                                        onClick={() => handleDelete(p._id || p.id, p.name)}
-                                        className="p-1 text-muted-foreground hover:text-rose-500 rounded"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
+                                  {(canEdit || canDelete) && (
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {canEdit && (
+                                        <button
+                                          onClick={() => openEdit(p)}
+                                          className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          onClick={() => handleDelete(p._id || p.id, p.name)}
+                                          className="p-1 text-muted-foreground hover:text-rose-500 rounded"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
 
                                 {p.description && (

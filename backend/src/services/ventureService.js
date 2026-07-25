@@ -1,5 +1,6 @@
 const Venture = require('../models/Venture');
 const Wallet = require('../models/Wallet');
+const Team = require('../models/Team');
 const AppError = require('../utils/AppError');
 const { logActivity } = require('./activityService');
 
@@ -56,7 +57,6 @@ const updateVenture = async (id, data, userId) => {
 
   const oldName = venture.name;
   
-  // Prevent key updates if not needed or handle carefully (omitted here for simplicity, typically key shouldn't change)
   if (data.key && data.key.toLowerCase() !== venture.key) {
       const existing = await Venture.findOne({ key: data.key.toLowerCase() });
       if (existing) throw new AppError(`Venture with key '${data.key}' already exists`, 400);
@@ -82,8 +82,12 @@ const deleteVenture = async (id, userId) => {
   const venture = await Venture.findById(id);
   if (!venture) throw new AppError('Venture not found', 404);
   
-  // In a real ERP, we might prevent deletion if there are transactions, employees, etc.
-  // For now, we'll just delete it and its wallet.
+  // Prevent deletion if teams exist under this venture
+  const teamCount = await Team.countDocuments({ venture: id });
+  if (teamCount > 0) {
+    throw new AppError(`Cannot delete venture '${venture.name}' because it contains ${teamCount} active team(s). Please delete or reassign the teams first.`, 400);
+  }
+
   await Wallet.findOneAndDelete({ venture: id });
   await Venture.findByIdAndDelete(id);
 
@@ -105,7 +109,6 @@ const archiveVenture = async (id, userId) => {
 const restoreVenture = async (id, userId) => {
     return updateVenture(id, { status: 'active' }, userId);
 };
-
 
 module.exports = {
   createVenture,

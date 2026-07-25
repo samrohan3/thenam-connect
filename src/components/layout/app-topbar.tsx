@@ -11,17 +11,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bell, MessageSquare, Menu, Plus, Search, Sun, Moon, Calendar, LogOut, User } from "lucide-react";
+import { Bell, MessageSquare, Menu, Plus, Search, Sun, Moon, Calendar, LogOut, User, Shield } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { AppSidebar } from "./app-sidebar";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuthStore } from "@/store/authStore";
 import { useVentures, useProjects, useEmployees, useTasks } from "@/lib/api-hooks";
+import { hasPermission, canAccessRoute, normalizeRole } from "@/lib/permissions";
 
 export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const currentRole = normalizeRole(user?.role);
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [today, setToday] = useState("");
@@ -33,29 +35,58 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
   const { data: employees } = useEmployees();
   const { data: tasks } = useTasks();
 
+  // Quick add items filtered by permissions
+  const quickAddOptions = useMemo(() => {
+    const options = [];
+    if (hasPermission(user?.role, "projects", "create")) {
+      options.push({ label: "Project", path: "/projects" });
+    }
+    if (hasPermission(user?.role, "tasks", "create")) {
+      options.push({ label: "Task", path: "/tasks" });
+    }
+    if (hasPermission(user?.role, "team", "create")) {
+      options.push({ label: "Employee", path: "/team" });
+    }
+    if (hasPermission(user?.role, "finance", "create")) {
+      options.push({ label: "Transaction", path: "/finance" });
+    }
+    if (hasPermission(user?.role, "ventures", "create")) {
+      options.push({ label: "Venture", path: "/ventures" });
+    }
+    return options;
+  }, [user?.role]);
+
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const term = searchQuery.toLowerCase();
     const results: Array<{ title: string; subtitle: string; category: string; path: string }> = [];
 
-    ventures?.filter((v: any) => v.name?.toLowerCase().includes(term) || v.code?.toLowerCase().includes(term))
-      .slice(0, 3)
-      .forEach((v: any) => results.push({ title: v.name, subtitle: `Venture • ${v.category || "Business"}`, category: "Venture", path: "/ventures" }));
+    if (canAccessRoute(user?.role, "/ventures")) {
+      ventures?.filter((v: any) => v.name?.toLowerCase().includes(term) || v.code?.toLowerCase().includes(term))
+        .slice(0, 3)
+        .forEach((v: any) => results.push({ title: v.name, subtitle: `Venture • ${v.category || "Business"}`, category: "Venture", path: "/ventures" }));
+    }
 
-    projects?.filter((p: any) => p.name?.toLowerCase().includes(term))
-      .slice(0, 3)
-      .forEach((p: any) => results.push({ title: p.name, subtitle: `Project • ${p.status}`, category: "Project", path: "/projects" }));
+    if (canAccessRoute(user?.role, "/projects")) {
+      projects?.filter((p: any) => p.name?.toLowerCase().includes(term))
+        .slice(0, 3)
+        .forEach((p: any) => results.push({ title: p.name, subtitle: `Project • ${p.status}`, category: "Project", path: "/projects" }));
+    }
 
-    employees?.filter((e: any) => e.name?.toLowerCase().includes(term) || e.email?.toLowerCase().includes(term))
-      .slice(0, 3)
-      .forEach((e: any) => results.push({ title: e.name, subtitle: `Employee • ${e.department || e.role}`, category: "Team", path: "/team" }));
+    if (canAccessRoute(user?.role, "/team")) {
+      employees?.filter((e: any) => e.name?.toLowerCase().includes(term) || e.email?.toLowerCase().includes(term))
+        .slice(0, 3)
+        .forEach((e: any) => results.push({ title: e.name, subtitle: `Employee • ${e.department || e.role}`, category: "Team", path: "/team" }));
+    }
 
-    tasks?.filter((t: any) => t.title?.toLowerCase().includes(term))
-      .slice(0, 3)
-      .forEach((t: any) => results.push({ title: t.title, subtitle: `Task • ${t.status}`, category: "Task", path: "/tasks" }));
+    if (canAccessRoute(user?.role, "/tasks")) {
+      tasks?.filter((t: any) => t.title?.toLowerCase().includes(term))
+        .slice(0, 3)
+        .forEach((t: any) => results.push({ title: t.title, subtitle: `Task • ${t.status}`, category: "Task", path: "/tasks" }));
+    }
 
     return results;
-  }, [searchQuery, ventures, projects, employees, tasks]);
+  }, [searchQuery, ventures, projects, employees, tasks, user?.role]);
 
   useEffect(() => {
     setToday(
@@ -133,22 +164,24 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
             <Calendar className="h-3.5 w-3.5" /> {today}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1.5 rounded-xl gradient-royal text-white hover:opacity-90 cursor-pointer">
-                <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Quick add</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 bg-background text-foreground border-border">
-              <DropdownMenuLabel>Create new</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate({ to: "/projects" })} className="cursor-pointer">Project</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate({ to: "/tasks" })} className="cursor-pointer">Task</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate({ to: "/team" })} className="cursor-pointer">Employee</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate({ to: "/finance" })} className="cursor-pointer">Transaction</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate({ to: "/ventures" })} className="cursor-pointer">Venture</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {quickAddOptions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="gap-1.5 rounded-xl gradient-royal text-white hover:opacity-90 cursor-pointer">
+                  <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Quick add</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-background text-foreground border-border">
+                <DropdownMenuLabel>Create new</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {quickAddOptions.map((opt) => (
+                  <DropdownMenuItem key={opt.path} onClick={() => navigate({ to: opt.path as any })} className="cursor-pointer">
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <Button variant="ghost" size="icon" className="relative" onClick={() => navigate({ to: "/communication" })}>
             <MessageSquare className="h-5 w-5" />
@@ -166,14 +199,17 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Avatar className="h-9 w-9 ring-2 ring-primary/20 hover:ring-primary/50 transition cursor-pointer ml-1">
-                <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name || "Admin"}`} />
-                <AvatarFallback>{user?.name?.charAt(0) || "A"}</AvatarFallback>
+                <AvatarImage src={user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name || "User"}`} />
+                <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-background text-foreground border-border">
               <DropdownMenuLabel>
                 <p className="text-sm font-semibold">{user?.name || "User"}</p>
                 <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-emerald-500">
+                  <Shield className="h-3 w-3" /> Role: {currentRole}
+                </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate({ to: "/settings" })} className="cursor-pointer gap-2">
