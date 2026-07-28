@@ -6,22 +6,19 @@ const employeeSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      trim: true,
-      index: true
+      trim: true
     },
     name: {
       type: String,
       required: true,
-      trim: true,
-      index: true
+      trim: true
     },
     email: {
       type: String,
       required: true,
       unique: true,
       trim: true,
-      lowercase: true,
-      index: true
+      lowercase: true
     },
     phone: {
       type: String,
@@ -35,8 +32,7 @@ const employeeSchema = new mongoose.Schema(
     department: {
       type: String,
       required: true,
-      trim: true,
-      index: true
+      trim: true
     },
     role: {
       type: String,
@@ -59,20 +55,17 @@ const employeeSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['Active', 'Inactive', 'On leave', 'Terminated'],
-      default: 'Active',
-      index: true
+      default: 'Active'
     },
     venture: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Venture',
-      required: true,
-      index: true
+      required: true
     },
     team: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',
-      default: null,
-      index: true
+      default: null
     },
     avatar: {
       type: String,
@@ -80,7 +73,13 @@ const employeeSchema = new mongoose.Schema(
     },
     firebaseUid: {
       type: String,
+      unique: true,
+      sparse: true,
       default: null
+    },
+    firebaseAuth: {
+      type: Boolean,
+      default: true
     },
     address: {
       street: { type: String, trim: true },
@@ -150,6 +149,6 @@ employeeSchema.virtual('taskCount', {
 employeeSchema.index({ venture: 1, team: 1 });
 employeeSchema.index({ venture: 1, department: 1 });
 employeeSchema.index({ status: 1, venture: 1 });
-employeeSchema.index({ rewardPoints: -1 });
+employeeSchema.index({ firebaseUid: 1 });
 
 module.exports = mongoose.model('Employee', employeeSchema);

@@ -330,7 +330,7 @@ export const useUpdateSettings = () => {
   });
 };
 
-// --- User & Profile Hooks ---
+// --- User & Auth Hooks ---
 
 export const useUsers = () => {
   return useQuery({
@@ -354,8 +354,31 @@ export const useUpdateProfile = () => {
 export const useChangePassword = () => {
   return useMutation({
     mutationFn: async (data: any) => {
-      const res = await api.put('/auth/password', data);
-      return res.data.data;
+      const res = await api.post('/auth/change-password', data);
+      return res.data;
+    }
+  });
+};
+
+export const useForgotPassword = () => {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const res = await api.post('/auth/forgot-password', { email });
+      return res.data;
+    }
+  });
+};
+
+export const useMigrateUsers = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/auth/migrate-existing-users');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
     }
   });
 };
@@ -498,6 +521,71 @@ export const useUpdateVenture = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ventures'] });
+    }
+  });
+};
+
+// Chat Hooks
+export const useChatMessages = (channel: string = 'general', recipientId?: string) => {
+  return useQuery({
+    queryKey: ['chat-messages', channel, recipientId],
+    queryFn: async () => {
+      const params: any = {};
+      if (recipientId) params.recipientId = recipientId;
+      else params.channel = channel;
+      const res = await api.get('/chat/messages', { params });
+      return res.data.data;
+    },
+    refetchInterval: 3000 // Poll every 3 seconds for near real-time updates
+  });
+};
+
+export const useSendMessage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { content: string; channel?: string; recipientId?: string }) => {
+      const res = await api.post('/chat/messages', payload);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+    }
+  });
+};
+
+// Announcement Hooks
+export const useAnnouncements = () => {
+  return useQuery({
+    queryKey: ['announcements'],
+    queryFn: async () => {
+      const res = await api.get('/announcements');
+      return res.data.data;
+    }
+  });
+};
+
+export const useCreateAnnouncement = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { title: string; content: string; pinned?: boolean }) => {
+      const res = await api.post('/announcements', payload);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
+    }
+  });
+};
+
+export const useDeleteAnnouncement = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/announcements/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
     }
   });
 };

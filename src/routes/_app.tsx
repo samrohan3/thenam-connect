@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { useAuthStore } from "@/store/authStore";
+import { AnnouncementPopup } from "@/components/announcements/AnnouncementPopup";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -40,6 +41,7 @@ function AppLayout() {
   return (
     <ThemeProvider>
       <div className="min-h-screen w-full bg-background text-foreground flex">
+        <AnnouncementPopup />
         <AppSidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
         <div className="flex-1 min-w-0 flex flex-col">
           <AppTopbar onToggleSidebar={() => setCollapsed((c) => !c)} />

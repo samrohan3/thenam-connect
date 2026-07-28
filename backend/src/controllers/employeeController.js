@@ -30,6 +30,15 @@ const updateEmployee = asyncHandler(async (req, res) => {
   return success(res, employee, 'Employee updated successfully');
 });
 
+const updateEmployeeStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, message: 'Status is required' });
+  }
+  const employee = await employeeService.updateEmployeeStatus(req.params.id, status, req.user?.id);
+  return success(res, employee, `Employee status updated to ${status}`);
+});
+
 const deleteEmployee = asyncHandler(async (req, res) => {
   await employeeService.deleteEmployee(req.params.id, req.user?.id);
   return success(res, null, 'Employee deleted successfully');
@@ -40,5 +49,6 @@ module.exports = {
   getEmployees,
   getEmployee,
   updateEmployee,
+  updateEmployeeStatus,
   deleteEmployee
 };

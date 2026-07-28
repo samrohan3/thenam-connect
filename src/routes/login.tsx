@@ -15,6 +15,8 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+import { useForgotPassword, useMigrateUsers } from "@/lib/api-hooks";
+
 type RoleType = "admin" | "manager" | "employee" | "founder";
 
 function LoginPage() {
@@ -24,6 +26,25 @@ function LoginPage() {
   const [selectedRole, setSelectedRole] = useState<RoleType>("admin");
   const [email, setEmail] = useState("admin@thenam.com");
   const [password, setPassword] = useState("Admin@1234");
+
+  const forgotPasswordMutation = useForgotPassword();
+  const migrateUsersMutation = useMigrateUsers();
+
+  const handleForgotPasswordSubmit = () => {
+    if (!email) {
+      toast.error("Please enter your email address first.");
+      return;
+    }
+    toast.info(`Sending password reset link for ${email}...`);
+    forgotPasswordMutation.mutate(email, {
+      onSuccess: (data: any) => {
+        toast.success(data.message || `Password reset link generated for ${email}`);
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.message || "Failed to generate password reset link.");
+      }
+    });
+  };
 
   const rolesList: Array<{ id: RoleType; label: string; email: string; desc: string }> = [
     { id: "admin", label: "Admin", email: "admin@thenam.com", desc: "Full System Control" },
@@ -256,7 +277,13 @@ function LoginPage() {
             <div>
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground">Password</Label>
-                <a href="#" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium">Forgot password?</a>
+                <button
+                  type="button"
+                  onClick={handleForgotPasswordSubmit}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium cursor-pointer"
+                >
+                  Forgot password?
+                </button>
               </div>
               <div className="relative mt-1.5">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">

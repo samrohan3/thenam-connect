@@ -97,6 +97,7 @@ function EmployeesPage() {
   const [salary, setSalary] = useState("60000");
   const [status, setStatus] = useState("Active");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [password, setPassword] = useState("Thenam@12345");
 
   // Cascading Teams based on selected Venture in form
   const { data: ventureTeams } = useVentureTeams(formVentureId);
@@ -126,6 +127,7 @@ function EmployeesPage() {
     setFirstName("");
     setLastName("");
     setEmail("");
+    setPassword("Thenam@12345");
     setPhone("");
     setRole("Employee");
     setDesignation("Software Engineer");
@@ -175,6 +177,7 @@ function EmployeesPage() {
       firstName,
       lastName,
       email,
+      password,
       phone,
       role,
       designation,
@@ -573,12 +576,37 @@ function EmployeesPage() {
                 />
               </div>
               <div>
+                <Label htmlFor="ePassword">Firebase Password {editingId ? "(Optional Update)" : "*"}</Label>
+                <Input
+                  id="ePassword"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Thenam@12345"
+                  className="mt-1.5 rounded-xl border-border"
+                  required={!editingId}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <Label htmlFor="ePhone">Phone Number</Label>
                 <Input
                   id="ePhone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+91 98765 43210"
+                  className="mt-1.5 rounded-xl border-border"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ePhoto">Photo URL</Label>
+                <Input
+                  id="ePhoto"
+                  value={photoUrl}
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                  placeholder="https://i.pravatar.cc/150?img=10"
                   className="mt-1.5 rounded-xl border-border"
                 />
               </div>

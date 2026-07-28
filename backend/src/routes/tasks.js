@@ -9,6 +9,10 @@ router.route('/')
     .get(canAccess('tasks', 'read'), taskController.getTasks)
     .post(canAccess('tasks', 'create'), taskController.createTask);
 
+router.route('/:id/status')
+    .patch(canAccess('tasks', 'update'), taskController.updateTaskStatus)
+    .put(canAccess('tasks', 'update'), taskController.updateTaskStatus);
+
 router.route('/:id')
     .get(canAccess('tasks', 'read'), taskController.getTask)
     .put(canAccess('tasks', 'update'), taskController.updateTask)

@@ -85,6 +85,7 @@ function TeamsPage() {
   const [status, setStatus] = useState("Active");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
+  const [teamImage, setTeamImage] = useState("");
 
   const filteredTeams = useMemo(() => {
     if (!teams) return [];
@@ -120,6 +121,7 @@ function TeamsPage() {
     setStatus("Active");
     setSelectedMembers([]);
     setMemberSearch("");
+    setTeamImage("");
     setOpen(true);
   };
 
@@ -132,6 +134,7 @@ function TeamsPage() {
     setStatus(t.status || "Active");
     setSelectedMembers(t.members ? t.members.map((m: any) => m._id || m) : []);
     setMemberSearch("");
+    setTeamImage(t.image || t.logo || "");
     setOpen(true);
   };
 
@@ -155,6 +158,7 @@ function TeamsPage() {
       description,
       status,
       members: selectedMembers,
+      image: teamImage,
     };
 
     if (editingId) {
@@ -529,6 +533,27 @@ function TeamsPage() {
                 placeholder="Team responsibilities and deliverables..."
                 className="mt-1.5 rounded-xl border-border"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="tmImage">Team Logo / Cover Upload</Label>
+              <Input
+                id="tmImage"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setTeamImage(reader.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer"
+              />
+              {teamImage && (
+                <img src={teamImage} alt="Team Logo Preview" className="mt-2 h-14 w-auto rounded-lg border border-border object-cover" />
+              )}
             </div>
 
             {/* Member Selection Section */}

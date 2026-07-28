@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees, useVentures, useDeleteTask, useUpdateTask } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,20 @@ export function TasksPage() {
   const [priority, setPriority] = useState("Medium");
   const [status, setStatus] = useState("Pending");
   const [deadline, setDeadline] = useState("");
+
+  const onDragEnd = (result: any) => {
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const newStatus = destination.droppableId;
+    updateTaskStatus.mutate(
+      { id: draggableId, status: newStatus },
+      {
+        onSuccess: () => toast.success(`Task moved to ${newStatus}`),
+        onError: (err: any) => toast.error(err.response?.data?.message || "Failed to update status"),
+      }
+    );
+  };
 
   const openNew = () => {
     setEditingId(null);
@@ -135,7 +150,7 @@ export function TasksPage() {
       { id, status: newStatus },
       {
         onSuccess: () => toast.success(`Task moved to ${newStatus}`),
-        onError: () => toast.error("Failed to update status"),
+        onError: (err: any) => toast.error(err.response?.data?.message || "Failed to update status"),
       }
     );
   };
@@ -186,92 +201,120 @@ export function TasksPage() {
             )}
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {taskStatuses.map((st) => {
-              const statusTasks = tasks.filter((t: any) => t.status === st);
-              return (
-                <div key={st} className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col min-h-[300px]">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">{st}</h3>
-                    <Badge variant="secondary" className="rounded-full">
-                      {statusTasks.length}
-                    </Badge>
-                  </div>
-
-                  <div className="space-y-3 flex-1 overflow-y-auto">
-                    {statusTasks.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-6">No tasks in {st}</p>
-                    ) : (
-                      statusTasks.map((t: any) => (
-                        <div
-                          key={t._id || t.id}
-                          className="p-3 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex items-start justify-between gap-1">
-                              <h4 className="font-medium text-sm text-foreground">{t.title}</h4>
-                              {(canEdit || canDelete) && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {canEdit && (
-                                    <button
-                                      onClick={() => openEdit(t)}
-                                      className="p-1 text-muted-foreground hover:text-foreground rounded"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                  {canDelete && (
-                                    <button
-                                      onClick={() => handleDelete(t._id || t.id, t.title)}
-                                      className="p-1 text-muted-foreground hover:text-rose-500 rounded"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {t.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{t.description}</p>
-                            )}
-                          </div>
-
-                          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-xs">
-                            <select
-                              value={t.status}
-                              disabled={!canEdit}
-                              onChange={(e) => handleStatusChange(t._id || t.id, e.target.value)}
-                              className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none disabled:opacity-70"
-                            >
-                              {taskStatuses.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] rounded-md ${
-                                t.priority === "Critical"
-                                  ? "text-rose-500 border-rose-500/30"
-                                  : t.priority === "High"
-                                  ? "text-amber-500 border-amber-500/30"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {t.priority || "Medium"}
-                            </Badge>
-                          </div>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {taskStatuses.map((st) => {
+                const statusTasks = tasks.filter((t: any) => t.status === st);
+                return (
+                  <Droppable key={st} droppableId={st}>
+                    {(provided) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col min-h-[340px]"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold">{st}</h3>
+                          <Badge variant="secondary" className="rounded-full">
+                            {statusTasks.length}
+                          </Badge>
                         </div>
-                      ))
+
+                        <div className="space-y-3 flex-1 overflow-y-auto min-h-[200px]">
+                          {statusTasks.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-6">No tasks in {st}</p>
+                          ) : (
+                            statusTasks.map((t: any, index: number) => {
+                              const taskId = t._id || t.id;
+                              return (
+                                <Draggable key={taskId} draggableId={taskId} index={index}>
+                                  {(draggableProvided, snapshot) => (
+                                    <div
+                                      ref={draggableProvided.innerRef}
+                                      {...draggableProvided.draggableProps}
+                                      {...draggableProvided.dragHandleProps}
+                                      className={`p-3 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between cursor-grab active:cursor-grabbing ${
+                                        snapshot.isDragging ? "ring-2 ring-primary shadow-lg" : ""
+                                      }`}
+                                    >
+                                      <div>
+                                        <div className="flex items-start justify-between gap-1">
+                                          <h4 className="font-medium text-sm text-foreground">{t.title}</h4>
+                                          {(canEdit || canDelete) && (
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                              {canEdit && (
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openEdit(t);
+                                                  }}
+                                                  className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                                >
+                                                  <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                              {canDelete && (
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(taskId, t.title);
+                                                  }}
+                                                  className="p-1 text-muted-foreground hover:text-rose-500 rounded"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {t.description && (
+                                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{t.description}</p>
+                                        )}
+                                      </div>
+
+                                      <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-xs">
+                                        <select
+                                          value={t.status}
+                                          onChange={(e) => handleStatusChange(taskId, e.target.value)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none"
+                                        >
+                                          {taskStatuses.map((s) => (
+                                            <option key={s} value={s}>
+                                              {s}
+                                            </option>
+                                          ))}
+                                        </select>
+
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[10px] rounded-md ${
+                                            t.priority === "Critical"
+                                              ? "text-rose-500 border-rose-500/30"
+                                              : t.priority === "High"
+                                              ? "text-amber-500 border-amber-500/30"
+                                              : "text-muted-foreground"
+                                          }`}
+                                        >
+                                          {t.priority || "Medium"}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  )}
+                                </Draggable>
+                              );
+                            })
+                          )}
+                          {provided.placeholder}
+                        </div>
+                      </div>
                     )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  </Droppable>
+                );
+              })}
+            </div>
+          </DragDropContext>
         )}
       </SectionCard>
 

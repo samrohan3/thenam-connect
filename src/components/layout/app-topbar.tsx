@@ -16,7 +16,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { AppSidebar } from "./app-sidebar";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuthStore } from "@/store/authStore";
-import { useVentures, useProjects, useEmployees, useTasks } from "@/lib/api-hooks";
+import { useVentures, useProjects, useEmployees, useTasks, useNotifications, useMarkNotificationRead } from "@/lib/api-hooks";
 import { hasPermission, canAccessRoute, normalizeRole } from "@/lib/permissions";
 
 export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
@@ -33,6 +33,13 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
   const { data: ventures } = useVentures();
   const { data: projects } = useProjects();
   const { data: employees } = useEmployees();
+  const { data: notifications } = useNotifications();
+  const markAsReadMutation = useMarkNotificationRead();
+
+  const unreadNotifications = useMemo(() => {
+    if (!notifications) return [];
+    return notifications.filter((n: any) => !n.isRead);
+  }, [notifications]);
   const { data: tasks } = useTasks();
 
   // Quick add items filtered by permissions
@@ -188,9 +195,73 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500" />
           </Button>
 
-          <Button variant="ghost" size="icon" className="relative" onClick={() => navigate({ to: "/communication" })}>
-            <Bell className="h-5 w-5" />
-          </Button>
+          {/* Notifications Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative cursor-pointer">
+                <Bell className="h-5 w-5" />
+                {unreadNotifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-extrabold text-white px-1 animate-bounce shadow-md">
+                    {unreadNotifications.length > 99 ? "99+" : unreadNotifications.length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 sm:w-96 bg-card text-foreground border-border rounded-2xl p-2 shadow-2xl">
+              <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm">Notifications</span>
+                  {unreadNotifications.length > 0 && (
+                    <span className="text-[10px] font-bold bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full">
+                      {unreadNotifications.length} new
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => navigate({ to: "/communication" })}
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  View all
+                </button>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-border/60" />
+
+              <div className="max-h-80 overflow-y-auto space-y-1 py-1">
+                {!notifications || notifications.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-6">No notifications available</p>
+                ) : (
+                  notifications.slice(0, 10).map((n: any) => (
+                    <div
+                      key={n._id}
+                      onClick={() => {
+                        if (!n.isRead) markAsReadMutation.mutate(n._id);
+                        navigate({ to: "/communication" });
+                      }}
+                      className={`p-2.5 rounded-xl cursor-pointer text-xs transition border flex items-start gap-2.5 ${
+                        !n.isRead
+                          ? "bg-primary/10 border-primary/30 text-foreground font-medium"
+                          : "bg-card/40 border-border/40 text-muted-foreground hover:bg-card"
+                      }`}
+                    >
+                      <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${!n.isRead ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        <Bell className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground text-xs line-clamp-1">{n.title}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-snug">{n.message}</p>
+                        <span className="text-[10px] text-muted-foreground/70 mt-1 block">
+                          {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {!n.isRead && (
+                        <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0 mt-1" />
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

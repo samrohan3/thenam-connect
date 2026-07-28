@@ -70,6 +70,7 @@ function ProjectsPage() {
   const [priority, setPriority] = useState("Medium");
   const [status, setStatus] = useState("Planning");
   const [deadline, setDeadline] = useState("");
+  const [image, setImage] = useState("");
 
   const openNew = () => {
     setEditingId(null);
@@ -81,6 +82,7 @@ function ProjectsPage() {
     setPriority("Medium");
     setStatus("Planning");
     setDeadline("");
+    setImage("");
     setOpen(true);
   };
 
@@ -94,6 +96,7 @@ function ProjectsPage() {
     setPriority(p.priority || "Medium");
     setStatus(p.status || "Planning");
     setDeadline(p.deadline ? new Date(p.deadline).toISOString().split("T")[0] : "");
+    setImage(p.image || "");
     setOpen(true);
   };
 
@@ -127,6 +130,7 @@ function ProjectsPage() {
       priority,
       status,
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
+      image,
     };
 
     if (editingId) {
@@ -410,6 +414,27 @@ function ProjectsPage() {
                 onChange={(e) => setDeadline(e.target.value)}
                 className="mt-1.5 rounded-xl border-border"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="projImage">Project Image / Cover Upload</Label>
+              <Input
+                id="projImage"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setImage(reader.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer"
+              />
+              {image && (
+                <img src={image} alt="Project Cover Preview" className="mt-2 h-16 w-auto rounded-lg border border-border object-cover" />
+              )}
             </div>
 
             <DialogFooter className="pt-2">

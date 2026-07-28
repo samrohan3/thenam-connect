@@ -12,12 +12,21 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
-      lowercase: true,
-      index: true
+      lowercase: true
     },
     password: {
       type: String,
-      required: true
+      required: false
+    },
+    firebaseUid: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: null
+    },
+    firebaseAuth: {
+      type: Boolean,
+      default: true
     },
     role: {
       type: String,
@@ -35,6 +44,30 @@ const userSchema = new mongoose.Schema(
     department: {
       type: String,
       trim: true
+    },
+    designation: {
+      type: String,
+      trim: true
+    },
+    venture: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Venture',
+      default: null
+    },
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      default: null
+    },
+    reportingManager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    status: {
+      type: String,
+      enum: ['Active', 'Inactive'],
+      default: 'Active'
     },
     isActive: {
       type: Boolean,
@@ -54,7 +87,7 @@ const userSchema = new mongoose.Schema(
     },
     emailVerified: {
       type: Boolean,
-      default: false
+      default: true
     },
     lastLogin: {
       type: Date,
@@ -66,8 +99,8 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Index for frequently queried fields
 userSchema.index({ role: 1 });
-userSchema.index({ isActive: 1 });
+userSchema.index({ status: 1 });
+userSchema.index({ firebaseUid: 1 });
 
 module.exports = mongoose.model('User', userSchema);

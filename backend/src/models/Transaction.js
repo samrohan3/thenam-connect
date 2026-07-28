@@ -79,6 +79,20 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    clientName: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    proof: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    proofImage: {
+      type: String,
+      default: null
+    },
     attachment: {
       type: String,
       default: null

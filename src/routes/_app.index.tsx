@@ -209,6 +209,42 @@ function DashboardPage() {
         </SectionCard>
       </div>
 
+      {/* Venture Credit Summary Widget */}
+      <div className="mt-6">
+        <SectionCard
+          title="Credit Amount per Venture"
+          description="Total credited revenue and funds received by venture"
+        >
+          {isStatsLoading ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">Loading venture credits...</div>
+          ) : !stats?.ventureCredits || stats.ventureCredits.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">No venture credit data available.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+              {stats.ventureCredits.map((vc: any) => (
+                <div
+                  key={vc.ventureId}
+                  className="p-3.5 rounded-xl bg-card border border-border flex items-center justify-between shadow-sm"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+                      <Wallet className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{vc.ventureName}</p>
+                      <p className="text-[10px] text-muted-foreground">Credited Funds</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs text-emerald-500 font-bold bg-emerald-500/10 border-0">
+                    ₹{vc.creditAmount?.toLocaleString() || "0"} credit
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
       {/* Revenue chart (Only for roles with finance access) */}
       {canSeeFinance && (
         <div className="mt-6">

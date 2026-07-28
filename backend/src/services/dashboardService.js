@@ -19,7 +19,8 @@ const getDashboardStats = async () => {
     pendingTasks,
     completedTasks,
     recentJoinings,
-    teamDistribution
+    teamDistribution,
+    allVentures
   ] = await Promise.all([
     Wallet.find().lean(),
     Employee.countDocuments({ status: 'Active' }),
@@ -53,8 +54,34 @@ const getDashboardStats = async () => {
           ventureName: { $arrayElemAt: ['$ventureInfo.name', 0] }
         }
       }
-    ])
+    ]),
+    Venture.find().lean()
   ]);
+
+  const ventureCreditMap = {};
+  wallets.forEach(w => {
+    if (w.venture) {
+      ventureCreditMap[String(w.venture)] = w.totalRevenue || 0;
+    }
+  });
+
+  const txAgg = await Transaction.aggregate([
+    { $match: { type: 'Money In' } },
+    { $group: { _id: '$venture', totalAmount: { $sum: '$amount' } } }
+  ]);
+
+  txAgg.forEach(t => {
+    if (t._id) {
+      const vId = String(t._id);
+      ventureCreditMap[vId] = Math.max(ventureCreditMap[vId] || 0, t.totalAmount || 0);
+    }
+  });
+
+  const ventureCredits = allVentures.map(v => ({
+    ventureId: v._id,
+    ventureName: v.name,
+    creditAmount: ventureCreditMap[String(v._id)] || 0
+  }));
 
   let totalRevenue = 0, totalExpense = 0, totalBalance = 0;
   wallets.forEach(w => {
@@ -77,7 +104,8 @@ const getDashboardStats = async () => {
     pendingTasks,
     completedTasks,
     recentJoinings,
-    teamDistribution
+    teamDistribution,
+    ventureCredits
   };
 };
 

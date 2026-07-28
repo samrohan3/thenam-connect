@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import api from "@/lib/api";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { SectionCard } from "@/components/ui-ext/section-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -257,7 +258,26 @@ function SettingsPage() {
           <TabsContent value="users">
             <SectionCard
               title="User Management"
-              description="Workspace users and role permissions"
+              description="Workspace users, role permissions, and Firebase account synchronization."
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                  onClick={() => {
+                    toast.info("Starting safe user migration to Firebase Auth...");
+                    api.post('/auth/migrate-existing-users')
+                      .then((res) => {
+                        toast.success(res.data.message || "User migration completed!");
+                      })
+                      .catch((err) => {
+                        toast.error(err.response?.data?.message || "Migration failed.");
+                      });
+                  }}
+                >
+                  Migrate Existing Users to Firebase
+                </Button>
+              }
             >
               <ul className="divide-y divide-border">
                 {isUsersLoading ? (
@@ -269,7 +289,7 @@ function SettingsPage() {
                     <li key={u._id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{u.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                        <p className="truncate text-xs text-muted-foreground">{u.email} {u.firebaseUid ? "• Firebase Auth Synced" : ""}</p>
                       </div>
                       <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-400 capitalize">{normalizeRole(u.role)}</span>
                     </li>

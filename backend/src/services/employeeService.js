@@ -1,7 +1,17 @@
 const Employee = require('../models/Employee');
 const Team = require('../models/Team');
+const User = require('../models/User');
 const AppError = require('../utils/AppError');
 const { logActivity } = require('./activityService');
+const {
+  createFirebaseUser,
+  updateFirebaseUser,
+  deleteFirebaseUser
+} = require('../config/firebase');
+
+// Ensure legacy non-sparse firebaseUid indexes are safely dropped from MongoDB collections on startup
+Employee.collection.dropIndex('firebaseUid_1').catch(() => {});
+User.collection.dropIndex('firebaseUid_1').catch(() => {});
 
 // Helper to auto-generate unique Employee ID e.g. EMP-1001
 const generateEmployeeId = async () => {
@@ -36,14 +46,44 @@ const createEmployee = async (data, userId) => {
   const venture = data.ventureId || data.venture;
   const team = data.teamId || data.team || null;
   const avatar = data.photo || data.avatar || null;
+  const password = data.password || 'Thenam@12345';
 
-  // Name handling if firstName and lastName provided
+  // Name handling
   let fullName = data.name;
   if (!fullName && (data.firstName || data.lastName)) {
     fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
   }
 
-  const employee = await Employee.create({
+  // Step 1: Create user in Firebase Authentication
+  let firebaseUid = null;
+  try {
+    const fbUser = await createFirebaseUser({
+      email: emailLower,
+      password,
+      displayName: fullName
+    });
+    firebaseUid = fbUser?.uid || null;
+
+    if (firebaseUid) {
+      await logActivity({
+        userId,
+        action: 'Firebase Account Created',
+        entity: 'Employee',
+        entityName: fullName,
+        details: { firebaseUid, email: emailLower }
+      });
+    }
+  } catch (fbErr) {
+    console.warn('[Firebase Auth] Employee creation fallback:', fbErr.message);
+  }
+
+  // If Firebase Cloud credentials are not configured locally, assign unique fallback UID
+  if (!firebaseUid) {
+    firebaseUid = `fb_emp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  // Step 2: Create Employee document in MongoDB
+  const employeeData = {
     ...data,
     name: fullName,
     email: emailLower,
@@ -51,8 +91,36 @@ const createEmployee = async (data, userId) => {
     venture,
     team,
     avatar,
+    firebaseUid,
+    firebaseAuth: true,
     createdBy: userId
-  });
+  };
+
+  const employee = await Employee.create(employeeData);
+
+  // Maintain User model sync
+  try {
+    await User.findOneAndUpdate(
+      { email: emailLower },
+      {
+        name: fullName,
+        email: emailLower,
+        role: data.role || 'Employee',
+        phone: data.phone,
+        avatar,
+        department: data.department,
+        designation: data.designation,
+        venture,
+        team,
+        firebaseUid,
+        firebaseAuth: true,
+        status: data.status || 'Active'
+      },
+      { upsert: true, new: true }
+    );
+  } catch (uErr) {
+    console.error('[User Sync] Warning during employee sync:', uErr.message);
+  }
 
   // If assigned to a team, add employee ID to Team members array
   if (team) {
@@ -120,7 +188,6 @@ const updateEmployee = async (id, data, userId) => {
     data.email = data.email.toLowerCase();
   }
 
-  // Name handling
   if (!data.name && (data.firstName || data.lastName)) {
     data.name = `${data.firstName || ''} ${data.lastName || ''}`.trim();
   }
@@ -132,7 +199,40 @@ const updateEmployee = async (id, data, userId) => {
   const oldTeam = emp.team ? String(emp.team) : null;
   const newTeam = data.team !== undefined ? (data.team ? String(data.team) : null) : oldTeam;
 
+  // Sync Firebase Auth status if status is updated
+  if (data.status && data.status !== emp.status && emp.firebaseUid && !emp.firebaseUid.startsWith('fb_emp_')) {
+    const isDisabled = data.status === 'Inactive' || data.status === 'Terminated';
+    await updateFirebaseUser(emp.firebaseUid, { disabled: isDisabled });
+
+    await logActivity({
+      userId,
+      action: isDisabled ? 'User Disabled' : 'User Enabled',
+      entity: 'Employee',
+      entityId: emp._id,
+      entityName: emp.name,
+      details: { firebaseUid: emp.firebaseUid, disabled: isDisabled }
+    });
+  }
+
   const updated = await Employee.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+
+  // Sync User model
+  try {
+    await User.findOneAndUpdate(
+      { email: updated.email },
+      {
+        name: updated.name,
+        role: updated.role,
+        status: updated.status === 'Inactive' ? 'Inactive' : 'Active',
+        phone: updated.phone,
+        avatar: updated.avatar,
+        designation: updated.designation,
+        department: updated.department
+      }
+    );
+  } catch (uErr) {
+    console.error('[User Sync] Warning during update:', uErr.message);
+  }
 
   // Update team members array if team changed
   if (oldTeam !== newTeam) {
@@ -159,32 +259,59 @@ const deleteEmployee = async (id, userId) => {
   const emp = await Employee.findById(id);
   if (!emp) throw new AppError('Employee not found', 404);
 
+  // Delete user from Firebase Auth if valid UID
+  if (emp.firebaseUid && !emp.firebaseUid.startsWith('fb_emp_')) {
+    await deleteFirebaseUser(emp.firebaseUid);
+  }
+
   // Remove from any Team members array
   if (emp.team) {
     await Team.findByIdAndUpdate(emp.team, { $pull: { members: emp._id } });
   }
 
-  // Also remove from any Team lead position if applicable
+  // Remove from Team lead position
   await Team.updateMany({ teamLead: id }, { teamLead: null });
+
+  // Delete User document if exists
+  await User.findOneAndDelete({ email: emp.email });
 
   await Employee.findByIdAndDelete(id);
 
   await logActivity({
     userId,
-    action: 'Deleted Employee',
+    action: 'User Deleted',
     entity: 'Employee',
     entityId: emp._id,
-    entityName: emp.name
+    entityName: emp.name,
+    details: { firebaseUid: emp.firebaseUid }
   });
 
   return null;
 };
 
+const updateEmployeeStatus = async (id, status, userId) => {
+  return updateEmployee(id, { status }, userId);
+};
+
 const recalculatePerformance = async (employeeId) => {
-  const emp = await Employee.findById(employeeId);
-  if (!emp) return;
-  emp.performance.rating = Math.min(100, emp.performance.rating + 1);
-  await emp.save();
+  if (!employeeId) return;
+  try {
+    const Task = require('../models/Task');
+    const [completed, total] = await Promise.all([
+      Task.countDocuments({ assignedTo: employeeId, status: 'Completed' }),
+      Task.countDocuments({ assignedTo: employeeId })
+    ]);
+    const pending = total - completed;
+    const rating = total > 0 ? Math.round((completed / total) * 100) : 100;
+
+    await Employee.findByIdAndUpdate(employeeId, {
+      'performance.tasksCompleted': completed,
+      'performance.tasksPending': pending,
+      'performance.rating': rating
+    });
+  } catch (err) {
+    console.error('Error recalculating performance:', err);
+  }
 };
 
 module.exports = {
@@ -194,5 +321,6 @@ module.exports = {
   getEmployeeById,
   updateEmployee,
   deleteEmployee,
+  updateEmployeeStatus,
   recalculatePerformance
 };

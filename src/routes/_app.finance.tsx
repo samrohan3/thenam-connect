@@ -60,6 +60,9 @@ function FinancePage() {
   const [revReason, setRevReason] = useState("");
   const [revMethod, setRevMethod] = useState("Bank Transfer");
   const [revDesc, setRevDesc] = useState("");
+  const [revClientName, setRevClientName] = useState("");
+  const [revProof, setRevProof] = useState("");
+  const [revProofImage, setRevProofImage] = useState("");
 
   // Expense Form
   const [expVenture, setExpVenture] = useState("");
@@ -68,6 +71,9 @@ function FinancePage() {
   const [expReason, setExpReason] = useState("");
   const [expMethod, setExpMethod] = useState("Bank Transfer");
   const [expDesc, setExpDesc] = useState("");
+  const [expClientName, setExpClientName] = useState("");
+  const [expProof, setExpProof] = useState("");
+  const [expProofImage, setExpProofImage] = useState("");
 
   // Transfer Form
   const [fromVenture, setFromVenture] = useState("");
@@ -75,6 +81,17 @@ function FinancePage() {
   const [trnAmount, setTrnAmount] = useState("");
   const [trnReason, setTrnReason] = useState("Inter-venture transfer");
   const [trnDesc, setTrnDesc] = useState("");
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setBase64: (val: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAddRevenueSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +105,10 @@ function FinancePage() {
       category: revCategory,
       reason: revReason,
       paymentMethod: revMethod,
-      description: revDesc
+      description: revDesc,
+      clientName: revClientName,
+      proof: revProof,
+      proofImage: revProofImage
     }, {
       onSuccess: () => {
         toast.success("Revenue recorded successfully");
@@ -97,6 +117,9 @@ function FinancePage() {
         setRevAmount("");
         setRevReason("");
         setRevDesc("");
+        setRevClientName("");
+        setRevProof("");
+        setRevProofImage("");
       },
       onError: (err: any) => {
         toast.error(err.response?.data?.message || "Failed to record revenue");
@@ -116,7 +139,10 @@ function FinancePage() {
       category: expCategory,
       reason: expReason,
       paymentMethod: expMethod,
-      description: expDesc
+      description: expDesc,
+      clientName: expClientName,
+      proof: expProof,
+      proofImage: expProofImage
     }, {
       onSuccess: () => {
         toast.success("Expense recorded successfully");
@@ -125,6 +151,9 @@ function FinancePage() {
         setExpAmount("");
         setExpReason("");
         setExpDesc("");
+        setExpClientName("");
+        setExpProof("");
+        setExpProofImage("");
       },
       onError: (err: any) => {
         toast.error(err.response?.data?.message || "Failed to record expense");
@@ -323,8 +352,23 @@ function FinancePage() {
               </div>
             </div>
             <div>
+              <Label htmlFor="revClient">Client Name</Label>
+              <Input id="revClient" value={revClientName} onChange={(e) => setRevClientName(e.target.value)} placeholder="Acme Corp / John Doe" className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
               <Label htmlFor="revReas">Reason</Label>
               <Input id="revReas" value={revReason} onChange={(e) => setRevReason(e.target.value)} placeholder="Invoice #2026-01" className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
+              <Label htmlFor="revProof">Proof of Amount / Note</Label>
+              <Input id="revProof" value={revProof} onChange={(e) => setRevProof(e.target.value)} placeholder="Receipt / Bank Reference No." className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
+              <Label htmlFor="revProofImg">Proof Image Upload</Label>
+              <Input id="revProofImg" type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setRevProofImage)} className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer" />
+              {revProofImage && (
+                <img src={revProofImage} alt="Proof preview" className="mt-2 h-16 w-auto rounded-lg border border-border object-cover" />
+              )}
             </div>
             <div>
               <Label htmlFor="revDsc">Notes</Label>
@@ -405,8 +449,23 @@ function FinancePage() {
               </div>
             </div>
             <div>
+              <Label htmlFor="expClient">Client / Vendor Name</Label>
+              <Input id="expClient" value={expClientName} onChange={(e) => setExpClientName(e.target.value)} placeholder="Vendor / Service Provider" className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
               <Label htmlFor="expReas">Reason</Label>
               <Input id="expReas" value={expReason} onChange={(e) => setExpReason(e.target.value)} placeholder="Office Supplies" className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
+              <Label htmlFor="expProof">Proof of Amount / Note</Label>
+              <Input id="expProof" value={expProof} onChange={(e) => setExpProof(e.target.value)} placeholder="Invoice / Bill Reference No." className="mt-1.5 rounded-xl border-border" />
+            </div>
+            <div>
+              <Label htmlFor="expProofImg">Proof Image Upload</Label>
+              <Input id="expProofImg" type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setExpProofImage)} className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer" />
+              {expProofImage && (
+                <img src={expProofImage} alt="Proof preview" className="mt-2 h-16 w-auto rounded-lg border border-border object-cover" />
+              )}
             </div>
             <div>
               <Label htmlFor="expDsc">Notes</Label>
