@@ -7,10 +7,17 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-    email: {
+    username: {
       type: String,
       required: true,
       unique: true,
+      trim: true,
+      lowercase: true
+    },
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
       trim: true,
       lowercase: true
     },
@@ -28,10 +35,19 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
-    role: {
+    roles: [{
       type: String,
-      enum: ['Founder', 'Admin', 'Manager', 'Finance', 'Employee', 'Customer', 'FOUNDER', 'ADMIN', 'HR', 'FINANCE', 'MANAGER', 'EMPLOYEE', 'USER'],
-      default: 'Customer'
+      enum: ['founder', 'admin', 'developer', 'designer', 'analyst', 'finance', 'Founder', 'Admin', 'Developer', 'Designer', 'Analyst', 'Finance'],
+      default: 'developer'
+    }],
+    plainPassword: {
+      type: String,
+      default: null
+    },
+    resetPasswordStatus: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'denied'],
+      default: 'none'
     },
     phone: {
       type: String,
@@ -99,7 +115,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-userSchema.index({ role: 1 });
+userSchema.index({ roles: 1 });
 userSchema.index({ status: 1 });
 userSchema.index({ firebaseUid: 1 });
 

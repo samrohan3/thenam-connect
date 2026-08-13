@@ -8,7 +8,9 @@ router.post('/register', authController.registerUser);
 router.post('/login', authController.loginUser);
 router.post('/firebase-login', authController.firebaseLogin);
 router.post('/forgot-password', authController.forgotPassword);
-
+router.get('/reset-status/:email', authController.getResetStatus);
+router.post('/approve-reset', protect, authController.approveReset);
+router.post('/set-new-password', authController.setNewPassword);
 // Protected routes
 router.get('/profile', protect, authController.getUserProfile);
 router.put('/profile', protect, authController.updateProfile);

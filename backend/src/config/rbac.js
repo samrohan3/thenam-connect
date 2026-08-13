@@ -3,25 +3,24 @@
  */
 
 const normalizeRole = (role) => {
-  if (!role) return 'Customer';
-  const r = String(role).trim().toUpperCase();
+  if (!role) return 'developer';
+  const r = String(role).trim().toLowerCase();
 
-  if (r === 'FOUNDER') return 'Founder';
-  if (r === 'ADMIN' || r === 'ADMINISTRATOR') return 'Admin';
-  if (r === 'MANAGER') return 'Manager';
-  if (r === 'FINANCE') return 'Finance';
-  if (r === 'EMPLOYEE' || r === 'HR' || r === 'STAFF') return 'Employee';
-  if (r === 'CUSTOMER' || r === 'USER' || r === 'CLIENT') return 'Customer';
+  if (r === 'founder' || r === 'ceo') return 'founder';
+  if (r === 'admin' || r === 'administrator' || r === 'manager') return 'admin';
+  if (r === 'developer' || r === 'employee' || r === 'hr' || r === 'staff') return 'developer';
+  if (r === 'designer') return 'designer';
+  if (r === 'analyst' || r === 'business analyst') return 'analyst';
+  if (r === 'finance') return 'finance';
 
-  const titleCase = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
-  const validRoles = ['Founder', 'Admin', 'Manager', 'Finance', 'Employee', 'Customer'];
-  if (validRoles.includes(titleCase)) return titleCase;
+  const validRoles = ['founder', 'admin', 'developer', 'designer', 'analyst', 'finance'];
+  if (validRoles.includes(r)) return r;
 
-  return 'Customer';
+  return 'developer';
 };
 
 const PERMISSIONS = {
-  Founder: {
+  founder: {
     ventures: ['create', 'read', 'update', 'delete'],
     finance: ['create', 'read', 'update', 'delete'],
     team: ['create', 'read', 'update', 'delete'],
@@ -30,9 +29,10 @@ const PERMISSIONS = {
     settings: ['create', 'read', 'update', 'delete'],
     user_management: ['create', 'read', 'update', 'delete'],
     reports: ['create', 'read', 'update', 'delete'],
-    company_settings: ['create', 'read', 'update', 'delete']
+    company_settings: ['create', 'read', 'update', 'delete'],
+    workspace_links: ['create', 'read', 'update', 'delete', 'share']
   },
-  Admin: {
+  admin: {
     ventures: ['create', 'read', 'update', 'delete'],
     finance: ['create', 'read', 'update', 'delete'],
     team: ['create', 'read', 'update', 'delete'],
@@ -41,20 +41,46 @@ const PERMISSIONS = {
     settings: ['read', 'update'],
     user_management: ['create', 'read', 'update', 'delete'],
     reports: ['create', 'read', 'update', 'delete'],
-    company_settings: ['read', 'update']
+    company_settings: ['read', 'update'],
+    workspace_links: ['create', 'read', 'update', 'delete', 'share']
   },
-  Manager: {
-    ventures: ['create', 'read', 'update'],
-    finance: ['read'],
-    team: ['create', 'read', 'update'],
-    projects: ['create', 'read', 'update', 'delete'],
-    tasks: ['create', 'read', 'update', 'delete'],
-    settings: [],
+  developer: {
+    ventures: ['read'],
+    finance: [],
+    team: ['read', 'update'],
+    projects: ['read', 'update'],
+    tasks: ['read', 'update'],
+    settings: ['read', 'update'],
     user_management: [],
     reports: ['read'],
-    company_settings: []
+    company_settings: [],
+    workspace_links: ['read', 'share'] // Can read general workspace links
   },
-  Finance: {
+  designer: {
+    ventures: ['read'],
+    finance: [],
+    team: ['read', 'update'],
+    projects: ['read', 'update'],
+    tasks: ['read', 'update'],
+    settings: ['read', 'update'],
+    user_management: [],
+    reports: ['read'],
+    company_settings: [],
+    workspace_links: ['create', 'read', 'update', 'share']
+  },
+  analyst: {
+    ventures: ['read'],
+    finance: [],
+    team: ['read', 'update'],
+    projects: ['read', 'update'],
+    tasks: ['read', 'update'],
+    settings: ['read', 'update'],
+    user_management: [],
+    reports: ['read', 'create'],
+    company_settings: [],
+    workspace_links: ['create', 'read', 'update', 'share']
+  },
+  finance: {
     ventures: ['read'],
     finance: ['create', 'read', 'update', 'delete'],
     team: ['read'],
@@ -63,30 +89,10 @@ const PERMISSIONS = {
     settings: [],
     user_management: [],
     reports: ['create', 'read', 'update'],
-    company_settings: []
+    company_settings: [],
+    workspace_links: ['read', 'share']
   },
-  Employee: {
-    ventures: ['read'],
-    finance: [],
-    team: ['read', 'update'], // View/Edit own profile
-    projects: ['read', 'update'],
-    tasks: ['read', 'update'],
-    settings: ['read', 'update'],
-    user_management: [],
-    reports: ['read'],
-    company_settings: []
-  },
-  Customer: {
-    ventures: [],
-    finance: ['read'], // Invoice view
-    team: [],
-    projects: ['read'],
-    tasks: [],
-    settings: ['read', 'update'],
-    user_management: [],
-    reports: ['read'],
-    company_settings: []
-  }
+  restricted: {}
 };
 
 const checkPermission = (roleRaw, resource, action = 'read') => {

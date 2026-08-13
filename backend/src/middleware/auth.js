@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Employee = require('../models/Employee');
 const { normalizeRole, checkPermission } = require('../config/rbac');
 
 // Authentication middleware - verifies JWT token
@@ -13,7 +14,12 @@ const protect = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretjwtkeyforthenamerp2026');
-      const user = await User.findById(decoded.id).select('-password');
+      
+      let user = await User.findById(decoded.id).select('-password');
+      
+      if (!user) {
+        user = await Employee.findById(decoded.id).select('-password');
+      }
 
       if (!user) {
         return res.status(401).json({
@@ -23,7 +29,16 @@ const protect = async (req, res, next) => {
       }
 
       req.user = user;
-      req.userRole = normalizeRole(user.role);
+      
+      const headerRole = req.headers['x-active-role'];
+      const normalizedHeaderRole = headerRole ? normalizeRole(headerRole) : null;
+      let primaryRole = user.roles && user.roles.length > 0 ? user.roles[0] : (user.role || 'employee');
+      
+      if (normalizedHeaderRole && user.roles && user.roles.map(r => normalizeRole(r)).includes(normalizedHeaderRole)) {
+        primaryRole = normalizedHeaderRole;
+      }
+
+      req.userRole = normalizeRole(primaryRole);
       return next();
     } catch (error) {
       console.error('Auth verification error:', error);
@@ -54,7 +69,7 @@ const requireRole = (...roles) => {
       });
     }
 
-    const normalizedUserRole = normalizeRole(req.user.role);
+    const normalizedUserRole = req.userRole;
     const normalizedAllowedRoles = roles.map(r => normalizeRole(r));
 
     if (!normalizedAllowedRoles.includes(normalizedUserRole)) {
@@ -81,7 +96,7 @@ const canAccess = (resource, action = 'read') => {
       });
     }
 
-    const userRole = normalizeRole(req.user.role);
+    const userRole = req.userRole;
     const isAllowed = checkPermission(userRole, resource, action);
 
     if (!isAllowed) {

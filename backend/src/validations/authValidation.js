@@ -1,14 +1,12 @@
 const validateRegisterInput = (data) => {
   const errors = {};
 
-  const email = data.email ? data.email.trim() : '';
+  const username = data.username || data.email ? (data.username || data.email).trim() : '';
   const password = data.password ? data.password : '';
   const name = data.name ? data.name.trim() : '';
 
-  if (!email) {
-    errors.email = 'Email is required';
-  } else if (!/\S+@\S+\.\S+/.test(email)) {
-    errors.email = 'Email is invalid';
+  if (!username) {
+    errors.username = 'Username is required';
   }
 
   if (!password) {
@@ -30,13 +28,11 @@ const validateRegisterInput = (data) => {
 const validateLoginInput = (data) => {
   const errors = {};
 
-  const email = data.email ? data.email.trim() : '';
+  const username = data.username || data.email ? (data.username || data.email).trim() : '';
   const password = data.password ? data.password : '';
 
-  if (!email) {
-    errors.email = 'Email is required';
-  } else if (!/\S+@\S+\.\S+/.test(email)) {
-    errors.email = 'Email is invalid';
+  if (!username) {
+    errors.username = 'Username is required';
   }
 
   if (!password) {

@@ -22,8 +22,11 @@ import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppFinanceRouteImport } from './routes/_app.finance'
 import { Route as AppDocumentsRouteImport } from './routes/_app.documents'
+import { Route as AppDesignerRouteImport } from './routes/_app.designer'
 import { Route as AppCommunicationRouteImport } from './routes/_app.communication'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
+import { Route as AppAnalystRouteImport } from './routes/_app.analyst'
+import { Route as AppAdminSecurityRouteImport } from './routes/_app.admin-security'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -89,6 +92,11 @@ const AppDocumentsRoute = AppDocumentsRouteImport.update({
   path: '/documents',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDesignerRoute = AppDesignerRouteImport.update({
+  id: '/designer',
+  path: '/designer',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCommunicationRoute = AppCommunicationRouteImport.update({
   id: '/communication',
   path: '/communication',
@@ -99,12 +107,25 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAnalystRoute = AppAnalystRouteImport.update({
+  id: '/analyst',
+  path: '/analyst',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminSecurityRoute = AppAdminSecurityRouteImport.update({
+  id: '/admin-security',
+  path: '/admin-security',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/admin-security': typeof AppAdminSecurityRoute
+  '/analyst': typeof AppAnalystRoute
   '/analytics': typeof AppAnalyticsRoute
   '/communication': typeof AppCommunicationRoute
+  '/designer': typeof AppDesignerRoute
   '/documents': typeof AppDocumentsRoute
   '/finance': typeof AppFinanceRoute
   '/projects': typeof AppProjectsRoute
@@ -118,8 +139,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/admin-security': typeof AppAdminSecurityRoute
+  '/analyst': typeof AppAnalystRoute
   '/analytics': typeof AppAnalyticsRoute
   '/communication': typeof AppCommunicationRoute
+  '/designer': typeof AppDesignerRoute
   '/documents': typeof AppDocumentsRoute
   '/finance': typeof AppFinanceRoute
   '/projects': typeof AppProjectsRoute
@@ -136,8 +160,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/admin-security': typeof AppAdminSecurityRoute
+  '/_app/analyst': typeof AppAnalystRoute
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/communication': typeof AppCommunicationRoute
+  '/_app/designer': typeof AppDesignerRoute
   '/_app/documents': typeof AppDocumentsRoute
   '/_app/finance': typeof AppFinanceRoute
   '/_app/projects': typeof AppProjectsRoute
@@ -155,8 +182,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/admin-security'
+    | '/analyst'
     | '/analytics'
     | '/communication'
+    | '/designer'
     | '/documents'
     | '/finance'
     | '/projects'
@@ -170,8 +200,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/admin-security'
+    | '/analyst'
     | '/analytics'
     | '/communication'
+    | '/designer'
     | '/documents'
     | '/finance'
     | '/projects'
@@ -187,8 +220,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/admin-security'
+    | '/_app/analyst'
     | '/_app/analytics'
     | '/_app/communication'
+    | '/_app/designer'
     | '/_app/documents'
     | '/_app/finance'
     | '/_app/projects'
@@ -300,6 +336,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDocumentsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/designer': {
+      id: '/_app/designer'
+      path: '/designer'
+      fullPath: '/designer'
+      preLoaderRoute: typeof AppDesignerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/communication': {
       id: '/_app/communication'
       path: '/communication'
@@ -314,12 +357,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyticsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/analyst': {
+      id: '/_app/analyst'
+      path: '/analyst'
+      fullPath: '/analyst'
+      preLoaderRoute: typeof AppAnalystRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin-security': {
+      id: '/_app/admin-security'
+      path: '/admin-security'
+      fullPath: '/admin-security'
+      preLoaderRoute: typeof AppAdminSecurityRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAdminSecurityRoute: typeof AppAdminSecurityRoute
+  AppAnalystRoute: typeof AppAnalystRoute
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppCommunicationRoute: typeof AppCommunicationRoute
+  AppDesignerRoute: typeof AppDesignerRoute
   AppDocumentsRoute: typeof AppDocumentsRoute
   AppFinanceRoute: typeof AppFinanceRoute
   AppProjectsRoute: typeof AppProjectsRoute
@@ -334,8 +394,11 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminSecurityRoute: AppAdminSecurityRoute,
+  AppAnalystRoute: AppAnalystRoute,
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppCommunicationRoute: AppCommunicationRoute,
+  AppDesignerRoute: AppDesignerRoute,
   AppDocumentsRoute: AppDocumentsRoute,
   AppFinanceRoute: AppFinanceRoute,
   AppProjectsRoute: AppProjectsRoute,

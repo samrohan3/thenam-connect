@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
 const ActivityLog = require('../models/ActivityLog');
+const Notification = require('../models/Notification');
 const { generateToken } = require('../utils/generateToken');
 const { validateRegisterInput, validateLoginInput } = require('../validations/authValidation');
 const {
@@ -86,19 +87,19 @@ const loginUser = async (req, res, next) => {
       return res.status(400).json({ success: false, errors });
     }
 
-    const { email, password } = req.body;
-    const emailLower = email.toLowerCase().trim();
+    const { username, email, password, role } = req.body;
+    const identifier = (username || email || '').toLowerCase().trim();
 
-    let user = await User.findOne({ email: emailLower });
+    let user = await User.findOne({ username: identifier });
     let employee = null;
 
     if (!user) {
-      employee = await Employee.findOne({ email: emailLower });
+      employee = await Employee.findOne({ email: identifier }); // employee might still use email
     }
 
     const targetAccount = user || employee;
     if (!targetAccount) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'user not exists' });
     }
 
     if (targetAccount.status === 'Inactive' || targetAccount.status === 'Terminated') {
@@ -107,40 +108,71 @@ const loginUser = async (req, res, next) => {
 
     // Check bcrypt password if present
     let passwordValid = false;
-    if (user && user.password) {
-      passwordValid = await bcrypt.compare(password, user.password);
+    if (targetAccount.password) {
+      passwordValid = await bcrypt.compare(password, targetAccount.password);
     } else {
-      // Fallback developer mode or initial accounts match default
-      passwordValid = true;
+      passwordValid = true; // Fallback
     }
 
     if (!passwordValid) {
       await ActivityLog.create({
-        userName: emailLower,
+        userName: identifier,
         action: 'Login Failure',
         entity: 'Auth',
-        details: { email: emailLower, reason: 'Invalid password' }
+        details: { identifier, reason: 'Invalid password' }
       }).catch(() => {});
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'incorrect password' });
     }
+
+    const { normalizeRole } = require('../config/rbac');
+    // Check roles
+    const userRoles = targetAccount.roles && targetAccount.roles.length > 0 
+      ? targetAccount.roles.map(r => normalizeRole(r))
+      : [normalizeRole(targetAccount.role)];
+    
+    const requestedRole = role ? normalizeRole(role) : '';
+    
+    if (requestedRole && !userRoles.includes(requestedRole)) {
+       return res.status(403).json({ 
+         success: false, 
+         message: 'Role mismatch', 
+         requestedRole,
+         assignedRoles: userRoles 
+       });
+    }
+
+    const finalRole = requestedRole || userRoles[0];
+
+    const isFirstLogin = !targetAccount.lastLogin;
 
     const userPayload = {
       id: targetAccount._id || targetAccount.id,
       name: targetAccount.name,
+      username: targetAccount.username || targetAccount.email,
       email: targetAccount.email,
-      role: targetAccount.role || 'Employee',
+      role: finalRole,
+      roles: userRoles,
       avatar: targetAccount.avatar || targetAccount.photo,
       firebaseUid: targetAccount.firebaseUid,
       employeeId: employee?.employeeId || targetAccount.employeeId,
+      isFirstLogin,
       token: generateToken(targetAccount._id || targetAccount.id)
     };
+
+    // Update lastLogin
+    targetAccount.lastLogin = new Date();
+    if (targetAccount.save) {
+      await targetAccount.save().catch(() => {});
+    } else {
+       await User.findByIdAndUpdate(targetAccount._id || targetAccount.id, { lastLogin: new Date() }).catch(() => {});
+    }
 
     await ActivityLog.create({
       user: targetAccount._id,
       userName: targetAccount.name,
       action: 'Login Success',
       entity: 'Auth',
-      details: { email: emailLower, method: 'Standard Auth' }
+      details: { identifier, method: 'Standard Auth' }
     }).catch(() => {});
 
     return res.json({
@@ -194,6 +226,8 @@ const firebaseLogin = async (req, res, next) => {
       account.firebaseUid = firebaseUid;
       await account.save();
     }
+    
+    const isFirstLogin = !account.lastLogin;
 
     const token = generateToken(account._id);
 
@@ -205,8 +239,13 @@ const firebaseLogin = async (req, res, next) => {
       avatar: account.avatar || account.photo,
       firebaseUid: account.firebaseUid || firebaseUid,
       employeeId: employee?.employeeId || account.employeeId,
+      isFirstLogin,
       token
     };
+
+    // Update lastLogin
+    account.lastLogin = new Date();
+    await account.save().catch(() => {});
 
     await ActivityLog.create({
       user: account._id,
@@ -236,7 +275,29 @@ const forgotPassword = async (req, res, next) => {
     }
 
     const emailLower = email.toLowerCase().trim();
-    const link = await generatePasswordResetLink(emailLower);
+    let user = await User.findOne({ email: emailLower });
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.resetPasswordStatus = 'pending';
+    await user.save();
+
+    // Create notification for all admins
+    const admins = await User.find({ roles: { $in: ['admin', 'Admin'] } });
+    const notificationPromises = admins.map(admin => {
+      return Notification.create({
+        user: admin._id,
+        title: 'Password Reset Request',
+        message: `alert A user of our company needs a password reset >> approve or deny >> ${emailLower}`,
+        type: 'general',
+        entityType: 'User',
+        entityId: user._id
+      });
+    });
+    
+    await Promise.all(notificationPromises);
 
     await ActivityLog.create({
       userName: emailLower,
@@ -247,14 +308,92 @@ const forgotPassword = async (req, res, next) => {
 
     return res.json({
       success: true,
-      message: `Password reset link generated for ${emailLower}.`,
-      resetLink: link
+      message: `Password reset request sent to admin for ${emailLower}. Please wait for approval.`,
     });
   } catch (error) {
     return res.status(400).json({
       success: false,
       message: error.message || 'Failed to send password reset request.'
     });
+  }
+};
+
+// @desc    Get Reset Status (Polling endpoint)
+// @route   GET /api/auth/reset-status/:email
+// @access  Public
+const getResetStatus = async (req, res, next) => {
+  try {
+    const email = req.params.email.toLowerCase().trim();
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    return res.json({ success: true, status: user.resetPasswordStatus });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// @desc    Approve or Deny Reset
+// @route   POST /api/auth/approve-reset
+// @access  Private (Admin)
+const approveReset = async (req, res, next) => {
+  try {
+    const { email, approved } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.resetPasswordStatus = approved ? 'approved' : 'denied';
+    await user.save();
+
+    return res.json({ success: true, message: `Reset request ${approved ? 'approved' : 'denied'}.` });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// @desc    Set New Password (after approval)
+// @route   POST /api/auth/set-new-password
+// @access  Public
+const setNewPassword = async (req, res, next) => {
+  try {
+    const { email, newPassword } = req.body;
+    const emailLower = email.toLowerCase().trim();
+    const user = await User.findOne({ email: emailLower });
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    if (user.resetPasswordStatus !== 'approved') {
+      return res.status(403).json({ success: false, message: 'Reset request not approved by admin.' });
+    }
+
+    // Store plain text for admin special access
+    user.plainPassword = newPassword;
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordStatus = 'none'; // reset it
+    await user.save();
+
+    if (user.firebaseUid) {
+      await updateFirebaseUser(user.firebaseUid, { password: newPassword }).catch(()=> {});
+    }
+
+    // Notify admins with the new password
+    const admins = await User.find({ roles: { $in: ['admin', 'Admin'] } });
+    const notificationPromises = admins.map(admin => {
+      return Notification.create({
+        user: admin._id,
+        title: 'User Password Updated',
+        message: `The user ${emailLower} has set a new password: ${newPassword}`,
+        type: 'general',
+        entityType: 'User',
+        entityId: user._id
+      });
+    });
+    await Promise.all(notificationPromises);
+
+    return res.json({ success: true, message: 'Password updated successfully. You can now login.' });
+  } catch (error) {
+    return next(error);
   }
 };
 
@@ -378,9 +517,15 @@ const migrateExistingUsers = async (req, res, next) => {
 // @access  Private
 const getUserProfile = async (req, res, next) => {
   try {
+    const userRoles = req.user.roles && req.user.roles.length > 0 ? req.user.roles : ['employee'];
+    const userObj = {
+      ...req.user._doc,
+      role: userRoles[0]
+    };
+
     return res.json({
       success: true,
-      data: req.user
+      data: userObj
     });
   } catch (error) {
     return next(error);
@@ -392,15 +537,19 @@ const getUserProfile = async (req, res, next) => {
 // @access  Private
 const updateProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
+    let user = await User.findById(req.user.id);
+    if (!user) {
+      user = await Employee.findById(req.user.id);
+    }
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     user.name = req.body.name || user.name;
     user.phone = req.body.phone || user.phone;
 
     if (req.body.email && req.body.email.toLowerCase() !== user.email) {
-      const existing = await User.findOne({ email: req.body.email.toLowerCase() });
-      if (existing) return res.status(400).json({ success: false, message: 'Email already exists' });
+      const existingUser = await User.findOne({ email: req.body.email.toLowerCase() });
+      const existingEmployee = await Employee.findOne({ email: req.body.email.toLowerCase() });
+      if (existingUser || existingEmployee) return res.status(400).json({ success: false, message: 'Email already exists' });
       user.email = req.body.email.toLowerCase();
     }
 
@@ -447,6 +596,9 @@ module.exports = {
   loginUser,
   firebaseLogin,
   forgotPassword,
+  getResetStatus,
+  approveReset,
+  setNewPassword,
   changePassword,
   migrateExistingUsers,
   getUserProfile,

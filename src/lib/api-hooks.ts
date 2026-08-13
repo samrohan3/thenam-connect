@@ -589,3 +589,123 @@ export const useDeleteAnnouncement = () => {
     }
   });
 };
+
+// --- Workspace Links Hooks ---
+
+export const useWorkspaceLinks = (params?: { workspace?: string; status?: string; type?: string; category?: string; search?: string }) => {
+  return useQuery({
+    queryKey: ['workspace-links', params],
+    queryFn: async () => {
+      const res = await api.get('/workspace-links', { params });
+      return res.data.data;
+    }
+  });
+};
+
+export const useRecentWorkspaceLinks = (workspace: string) => {
+  return useQuery({
+    queryKey: ['recent-workspace-links', workspace],
+    queryFn: async () => {
+      const res = await api.get('/workspace-links/recent', { params: { workspace, limit: 3 } });
+      return res.data.data;
+    },
+    enabled: !!workspace
+  });
+};
+
+export const useCreateWorkspaceLink = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await api.post('/workspace-links', data);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-links'] });
+    }
+  });
+};
+
+export const useUpdateWorkspaceLink = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await api.put(`/workspace-links/${id}`, data);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-links'] });
+    }
+  });
+};
+
+export const useTrackWorkspaceLinkOpen = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post(`/workspace-links/${id}/open`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recent-workspace-links'] });
+    }
+  });
+};
+
+export const useArchiveWorkspaceLink = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post(`/workspace-links/${id}/archive`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-links'] });
+    }
+  });
+};
+
+export const useRestoreWorkspaceLink = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post(`/workspace-links/${id}/restore`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-links'] });
+    }
+  });
+};
+
+export const useDeleteWorkspaceLink = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/workspace-links/${id}`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-links'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-workspace-links'] });
+    }
+  });
+};
+
+// --- Upload Hooks ---
+
+export const useUploadFirebaseImage = () => {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await api.post('/upload/firebase-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return res.data.data;
+    }
+  });
+};

@@ -8,6 +8,9 @@ const {
   updateFirebaseUser,
   deleteFirebaseUser
 } = require('../config/firebase');
+const bcrypt = require('bcryptjs');
+const Notification = require('../models/Notification');
+const { normalizeRole } = require('../config/rbac');
 
 // Ensure legacy non-sparse firebaseUid indexes are safely dropped from MongoDB collections on startup
 Employee.collection.dropIndex('firebaseUid_1').catch(() => {});
@@ -99,13 +102,17 @@ const createEmployee = async (data, userId) => {
   const employee = await Employee.create(employeeData);
 
   // Maintain User model sync
+  let syncedUser;
   try {
-    await User.findOneAndUpdate(
+    const hashedPassword = await bcrypt.hash(password, 10);
+    syncedUser = await User.findOneAndUpdate(
       { email: emailLower },
       {
         name: fullName,
         email: emailLower,
-        role: data.role || 'Employee',
+        role: normalizeRole(data.role),
+        roles: [normalizeRole(data.role)],
+        password: hashedPassword,
         phone: data.phone,
         avatar,
         department: data.department,
@@ -136,6 +143,26 @@ const createEmployee = async (data, userId) => {
     entityId: employee._id,
     entityName: employee.name
   });
+
+  // Notify everyone else about the new employee
+  if (syncedUser) {
+    try {
+      const otherUsers = await User.find({ _id: { $ne: syncedUser._id } }).select('_id');
+      const notificationsToInsert = otherUsers.map(u => ({
+        user: u._id,
+        title: 'New Employee Arrived!',
+        message: `${fullName} has joined us as a ${data.role || 'Employee'}. Let's welcome them! 🎉`,
+        type: 'employee_joined',
+        entityType: 'Employee',
+        entityId: employee._id
+      }));
+      if (notificationsToInsert.length > 0) {
+        await Notification.insertMany(notificationsToInsert);
+      }
+    } catch (notifErr) {
+      console.error('[Notification] Error creating employee joined notifications:', notifErr.message);
+    }
+  }
 
   return getEmployeeById(employee._id);
 };

@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   useNotifications,
   useMarkNotificationRead,
-  useEmployees,
+  useUsers,
   useChatMessages,
   useSendMessage,
   useAnnouncements,
@@ -66,7 +66,7 @@ function CommunicationPage() {
   });
 
   // Queries & Mutations
-  const { data: employees } = useEmployees();
+  const { data: usersData } = useUsers();
   const { data: notifications, isLoading: isNotifsLoading } = useNotifications();
   const markRead = useMarkNotificationRead();
 
@@ -179,10 +179,10 @@ function CommunicationPage() {
 
           <SectionCard title="Direct Messages" description="Chat 1-on-1 with team members">
             <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
-              {!employees || employees.length === 0 ? (
+              {!usersData || usersData.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">No team members found</p>
               ) : (
-                employees
+                usersData
                   .filter((emp: any) => emp.email !== user?.email)
                   .map((emp: any) => {
                     const empUserId = emp.user || emp._id;
@@ -274,7 +274,7 @@ function CommunicationPage() {
               </div>
             ) : (
               messages.map((msg: any) => {
-                const currentUserId = user?._id || user?.id;
+                const currentUserId = (user as any)?._id || (user as any)?.id;
                 const isMe = msg.sender?._id === currentUserId || msg.sender?.id === currentUserId;
 
                 return (

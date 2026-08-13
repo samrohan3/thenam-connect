@@ -1,13 +1,16 @@
 const { initializeApp, getApps } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
+const { getStorage } = require('firebase-admin/storage');
 
 // Initialize Firebase Admin SDK safely
 let app;
 if (!getApps().length) {
   try {
     const projectId = process.env.FIREBASE_PROJECT_ID || 'thenam-tss';
+    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || 'thenam-tss.firebasestorage.app';
     app = initializeApp({
-      projectId
+      projectId,
+      storageBucket
     });
     console.log(`[Firebase Admin] Initialized for project: ${projectId}`);
   } catch (err) {
@@ -18,6 +21,7 @@ if (!getApps().length) {
 }
 
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 /**
  * Create a new user in Firebase Auth
@@ -113,5 +117,6 @@ module.exports = {
   deleteFirebaseUser,
   getFirebaseUserByEmail,
   verifyFirebaseToken,
-  generatePasswordResetLink
+  generatePasswordResetLink,
+  storage
 };

@@ -14,8 +14,15 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = getToken();
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const activeRole = typeof window !== 'undefined' ? localStorage.getItem('activeRole') : null;
+    
+    if (config.headers) {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      if (activeRole) {
+        config.headers['X-Active-Role'] = activeRole;
+      }
     }
     return config;
   },

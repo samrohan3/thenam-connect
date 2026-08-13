@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -29,6 +30,9 @@ const nav: NavItem[] = [
   { to: "/finance", label: "Finance", icon: Wallet },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
+  { to: "/designer", label: "Designer Space", icon: LayoutDashboard },
+  { to: "/analyst", label: "Analyst Workspace", icon: FileBarChart },
+  { to: "/admin-security", label: "Security & Users", icon: ShieldCheck },
   { to: "/rewards", label: "Rewards", icon: Trophy },
   { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },

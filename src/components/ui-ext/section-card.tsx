@@ -10,7 +10,7 @@ export function SectionCard({
   className,
   delay = 0,
 }: {
-  title?: string;
+  title?: ReactNode;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;

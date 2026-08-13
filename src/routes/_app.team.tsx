@@ -44,7 +44,8 @@ import {
   useDeleteEmployee,
   useVentures,
   useTeams,
-  useVentureTeams
+  useVentureTeams,
+  useUploadFirebaseImage
 } from "@/lib/api-hooks";
 import { EmployeeProfileModal } from "@/components/employees/EmployeeProfileModal";
 
@@ -76,6 +77,7 @@ function EmployeesPage() {
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const deleteEmployee = useDeleteEmployee();
+  const uploadImage = useUploadFirebaseImage();
 
   // Modal & Profile Drawer States
   const [open, setOpen] = useState(false);
@@ -158,6 +160,27 @@ function EmployeesPage() {
     setStatus(emp.status || "Active");
     setPhotoUrl(emp.avatar || emp.photo || "");
     setOpen(true);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be smaller than 5MB");
+      return;
+    }
+
+    toast.info("Uploading image...");
+    uploadImage.mutate(file, {
+      onSuccess: (res) => {
+        setPhotoUrl(res.url);
+        toast.success("Image uploaded successfully");
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.message || "Failed to upload image");
+      }
+    });
   };
 
   const openProfile = (emp: any) => {
@@ -289,10 +312,10 @@ function EmployeesPage() {
             <option value="all">All Roles</option>
             <option value="Founder">Founder</option>
             <option value="Admin">Admin</option>
-            <option value="Manager">Manager</option>
+            <option value="Developer">Developer</option>
+            <option value="Designer">Designer</option>
+            <option value="Analyst">Analyst</option>
             <option value="Finance">Finance</option>
-            <option value="Employee">Employee</option>
-            <option value="Customer">Customer</option>
           </select>
 
           <select
@@ -601,14 +624,23 @@ function EmployeesPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="ePhoto">Photo URL</Label>
-                <Input
-                  id="ePhoto"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://i.pravatar.cc/150?img=10"
-                  className="mt-1.5 rounded-xl border-border"
-                />
+                <Label htmlFor="ePhoto">Profile Image (Max 5MB)</Label>
+                <div className="mt-1.5 flex items-center gap-3">
+                  <Input
+                    id="ePhoto"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploadImage.isPending}
+                    className="cursor-pointer file:cursor-pointer file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                  />
+                  {photoUrl && (
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarImage src={photoUrl} />
+                      <AvatarFallback>IMG</AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -621,12 +653,12 @@ function EmployeesPage() {
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full mt-1.5 h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus:outline-none"
                 >
-                  <option value="Founder">Founder</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Finance">Finance</option>
-                  <option value="Employee">Employee</option>
-                  <option value="Customer">Customer</option>
+                  <option value="founder">Founder</option>
+                  <option value="admin">Admin</option>
+                  <option value="developer">Developer</option>
+                  <option value="designer">Designer</option>
+                  <option value="analyst">Analyst</option>
+                  <option value="finance">Finance</option>
                 </select>
               </div>
 

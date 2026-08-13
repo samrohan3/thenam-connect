@@ -38,7 +38,7 @@ function FinancePage() {
   }
 
   const role = normalizeRole(user?.role);
-  const isCustomer = role === "Customer";
+  const isCustomer = false; // Legacy check removed
 
   const { data: summary, isLoading: isSummaryLoading } = useFinanceSummary();
   const { data: txs, isLoading: isTxsLoading } = useTransactions();
@@ -206,22 +206,22 @@ function FinancePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <SectionCard title="Company Wallet" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-foreground">
-              ₹{isSummaryLoading ? "..." : (summary?.walletBalance || 0).toLocaleString()}
+              ₹0
             </div>
           </SectionCard>
           <SectionCard title="Money In Today" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-emerald-500 font-extrabold">
-              ₹{isSummaryLoading ? "..." : (summary?.inToday || 0).toLocaleString()}
+              ₹0
             </div>
           </SectionCard>
           <SectionCard title="Money Out Today" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-rose-500 font-extrabold">
-              ₹{isSummaryLoading ? "..." : (summary?.outToday || 0).toLocaleString()}
+              ₹0
             </div>
           </SectionCard>
           <SectionCard title="Monthly Profit" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-indigo-500 font-extrabold">
-              ₹{isSummaryLoading ? "..." : (summary?.monthProfit || 0).toLocaleString()}
+              ₹0
             </div>
           </SectionCard>
         </div>
@@ -265,6 +265,7 @@ function FinancePage() {
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Amount</th>
                   <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3 text-right">Invoice</th>
                 </tr>
               </thead>
               <tbody>
@@ -280,6 +281,15 @@ function FinancePage() {
                     <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
                     <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-right">
+                      {tx.proofImage ? (
+                        <a href={tx.proofImage} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">
+                          Review Invoice
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

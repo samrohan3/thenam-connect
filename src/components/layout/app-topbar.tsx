@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bell, MessageSquare, Menu, Plus, Search, Sun, Moon, Calendar, LogOut, User, Shield } from "lucide-react";
+import { Bell, MessageSquare, Menu, Plus, Search, Sun, Moon, Calendar, LogOut, User, Shield, Briefcase, CheckCircle2 } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { AppSidebar } from "./app-sidebar";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -22,8 +22,13 @@ import { hasPermission, canAccessRoute, normalizeRole } from "@/lib/permissions"
 export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
-  const currentRole = normalizeRole(user?.role);
+  const { user, logout, setActiveRole, activeRole } = useAuthStore();
+  const currentRole = normalizeRole(activeRole || user?.role);
+  
+  const handleRoleSwitch = (role: string) => {
+      setActiveRole(role);
+      navigate({ to: "/" }); // optionally redirect home to re-evaluate permissions safely
+  };
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [today, setToday] = useState("");
@@ -262,6 +267,35 @@ export function AppTopbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {user?.roles && user.roles.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="hidden sm:flex items-center gap-2 border border-border/50 bg-background/50 cursor-pointer rounded-full px-3">
+                  <Briefcase className="h-4 w-4 text-indigo-500" />
+                  <span className="text-xs font-medium capitalize">{currentRole}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-background text-foreground border-border rounded-xl">
+                <DropdownMenuLabel className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Switch Workspace</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {user.roles.map(r => {
+                   const normalizedR = normalizeRole(r);
+                   const isActive = normalizedR === currentRole;
+                   return (
+                      <DropdownMenuItem 
+                        key={r} 
+                        onClick={() => handleRoleSwitch(r)} 
+                        className={`cursor-pointer capitalize text-sm ${isActive ? 'bg-indigo-500/10 text-indigo-500 font-bold' : ''}`}
+                      >
+                        {normalizedR}
+                        {isActive && <CheckCircle2 className="h-3.5 w-3.5 ml-auto" />}
+                      </DropdownMenuItem>
+                   )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
