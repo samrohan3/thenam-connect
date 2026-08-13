@@ -67,6 +67,9 @@ app.get('/health', (req, res) => {
   res.json({ success: true, message: 'ERP Backend Running' });
 });
 
+// 6c. Ignore favicon requests
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // 7. 404 Handler
 app.use((req, res, next) => {
   const error = new Error(`Route Not Found - ${req.originalUrl}`);
