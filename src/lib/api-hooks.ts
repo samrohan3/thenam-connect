@@ -709,3 +709,69 @@ export const useUploadFirebaseImage = () => {
     }
   });
 };
+
+// --- Communication Hooks ---
+
+export const useDirectUsers = () => {
+  return useQuery({
+    queryKey: ['direct-users'],
+    queryFn: async () => {
+      const res = await api.get('/communication/direct-users');
+      return res.data.data;
+    },
+    refetchInterval: 5000 // Poll every 5s for unread badges and previews
+  });
+};
+
+export const useDirectConversation = (userId?: string) => {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['direct-conversation', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const res = await api.get(`/communication/direct/${userId}`);
+      return res.data.data;
+    },
+    enabled: !!userId
+  });
+};
+
+export const useSendDirectMessage = (userId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { text: string; messageType?: string; attachments?: any[] }) => {
+      const res = await api.post(`/communication/direct/${userId}/messages`, payload);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['direct-messages', userId] });
+      queryClient.invalidateQueries({ queryKey: ['direct-users'] });
+    }
+  });
+};
+
+export const useDirectMessages = (userId?: string) => {
+  return useQuery({
+    queryKey: ['direct-messages', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const res = await api.get(`/communication/direct/${userId}/messages`);
+      return res.data.data;
+    },
+    enabled: !!userId,
+    refetchInterval: 3000 // Poll every 3s for real-time DM sync
+  });
+};
+
+export const useMarkMessageRead = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (messageId: string) => {
+      const res = await api.post(`/communication/messages/${messageId}/read`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['direct-users'] });
+    }
+  });
+};

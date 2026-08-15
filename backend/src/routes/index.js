@@ -19,6 +19,7 @@ const uploadRoutes = require('./upload');
 const chatRoutes = require('./chat');
 const announcementRoutes = require('./announcements');
 const workspaceLinkRoutes = require('./workspaceLinks');
+const communicationRoutes = require('./communication');
 
 // Mount sub-routers
 router.use('/health', healthRoutes);
@@ -38,6 +39,7 @@ router.use('/upload', uploadRoutes);
 router.use('/chat', chatRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/workspace-links', workspaceLinkRoutes);
+router.use('/communication', communicationRoutes);
 
 // Database connection test route
 router.get('/db-test', (req, res) => {
