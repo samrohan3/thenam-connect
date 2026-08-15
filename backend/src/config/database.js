@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const socketPlugin = require('../models/plugins/socketPlugin');
+
+// Apply the socket plugin globally to all schemas
+mongoose.plugin(socketPlugin);
 
 const connectDB = async () => {
   const mongoURI = process.env.MONGO_URI;

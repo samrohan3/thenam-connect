@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { io } from "socket.io-client";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -116,6 +117,27 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    // Connect to the socket server
+    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    const socket = io(apiUrl);
+
+    socket.on('connect', () => {
+      console.log('Connected to real-time updates');
+    });
+
+    socket.on('invalidate', (keys: string[]) => {
+      // Keys is an array of string query keys that need to be invalidated
+      keys.forEach(key => {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>

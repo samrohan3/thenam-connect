@@ -535,8 +535,7 @@ export const useChatMessages = (channel: string = 'general', recipientId?: strin
       else params.channel = channel;
       const res = await api.get('/chat/messages', { params });
       return res.data.data;
-    },
-    refetchInterval: 3000 // Poll every 3 seconds for near real-time updates
+    }
   });
 };
 
@@ -718,8 +717,7 @@ export const useDirectUsers = () => {
     queryFn: async () => {
       const res = await api.get('/communication/direct-users');
       return res.data.data;
-    },
-    refetchInterval: 5000 // Poll every 5s for unread badges and previews
+    }
   });
 };
 
@@ -758,8 +756,7 @@ export const useDirectMessages = (userId?: string) => {
       const res = await api.get(`/communication/direct/${userId}/messages`);
       return res.data.data;
     },
-    enabled: !!userId,
-    refetchInterval: 3000 // Poll every 3s for real-time DM sync
+    enabled: !!userId
   });
 };
 
