@@ -6,7 +6,7 @@ const normalizeRole = (role) => {
   if (!role) return 'developer';
   const r = String(role).trim().toLowerCase();
 
-  if (r === 'founder' || r === 'ceo') return 'founder';
+  if (r === 'founder' || r === 'ceo' || r === 'super admin' || r === 'superadmin') return 'founder';
   if (r === 'admin' || r === 'administrator' || r === 'manager') return 'admin';
   if (r === 'developer' || r === 'employee' || r === 'hr' || r === 'staff') return 'developer';
   if (r === 'designer') return 'designer';

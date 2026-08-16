@@ -37,11 +37,45 @@ const deleteTask = asyncHandler(async (req, res) => {
     return success(res, null, 'Task deleted successfully');
 });
 
+// ── Approval Workflow ─────────────────────────────────────────────────────────
+
+/**
+ * Employee submits task for completion approval.
+ * POST /api/tasks/:id/submit-completion
+ */
+const submitCompletion = asyncHandler(async (req, res) => {
+    const task = await taskService.submitForCompletion(req.params.id, req.user);
+    return success(res, task, 'Task submitted for completion approval');
+});
+
+/**
+ * Admin approves task completion.
+ * POST /api/tasks/:id/approve-completion
+ */
+const approveCompletion = asyncHandler(async (req, res) => {
+    const task = await taskService.approveCompletion(req.params.id, req.user);
+    return success(res, task, 'Task completion approved');
+});
+
+/**
+ * Admin denies task completion with a reason.
+ * POST /api/tasks/:id/deny-completion
+ * Body: { reason: string }
+ */
+const denyCompletion = asyncHandler(async (req, res) => {
+    const { reason } = req.body;
+    const task = await taskService.denyCompletion(req.params.id, req.user, reason);
+    return success(res, task, 'Task completion denied');
+});
+
 module.exports = {
     createTask,
     getTasks,
     getTask,
     updateTask,
     updateTaskStatus,
-    deleteTask
+    deleteTask,
+    submitCompletion,
+    approveCompletion,
+    denyCompletion
 };

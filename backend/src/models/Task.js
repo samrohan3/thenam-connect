@@ -64,7 +64,14 @@ const taskSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'In Progress', 'Review', 'Completed', 'Cancelled'],
+      enum: [
+        'Pending',
+        'In Progress',
+        'Review',
+        'Pending_Approval',   // Employee submitted; waiting for admin approval
+        'Completed',
+        'Cancelled'
+      ],
       default: 'Pending',
       index: true
     },
@@ -91,7 +98,57 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
-    tags: [{ type: String, trim: true }]
+    tags: [{ type: String, trim: true }],
+
+    // ── Completion Approval Workflow ────────────────────────────────────────
+    submittedForApprovalAt: {
+      type: Date,
+      default: null
+    },
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    approvedByName: {
+      type: String,
+      default: null
+    },
+    approvedAt: {
+      type: Date,
+      default: null
+    },
+    completionApproved: {
+      type: Boolean,
+      default: false
+    },
+    completionDenied: {
+      type: Boolean,
+      default: false
+    },
+    deniedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    deniedByName: {
+      type: String,
+      default: null
+    },
+    deniedAt: {
+      type: Date,
+      default: null
+    },
+    denialReason: {
+      type: String,
+      trim: true,
+      default: null
+    }
   },
   {
     timestamps: true

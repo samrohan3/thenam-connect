@@ -2,9 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui-ext/section-card";
-import { ClipboardList, Plus, Clock, Trash2, Edit2, CheckCircle2 } from "lucide-react";
+import {
+  ClipboardList, Plus, Trash2, Edit2, CheckCircle2, Lock,
+  Send, Clock, AlertCircle
+} from "lucide-react";
 import { useState } from "react";
-import { useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees, useVentures, useDeleteTask, useUpdateTask } from "@/lib/api-hooks";
+import {
+  useTasks, useCreateTask, useUpdateTaskStatus, useProjects, useEmployees,
+  useVentures, useDeleteTask, useUpdateTask,
+  useSubmitTaskCompletion, useApproveTaskCompletion, useDenyTaskCompletion
+} from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
@@ -21,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { canAccessRoute, hasPermission } from "@/lib/permissions";
+import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
 import { AccessDenied } from "@/components/rbac/AccessDenied";
 import { RoleGuard } from "@/components/rbac/RoleGuard";
 
@@ -30,7 +37,10 @@ export const Route = createFileRoute("/_app/tasks")({
   component: TasksPage,
 });
 
-const taskStatuses = ["Pending", "In Progress", "Review", "Completed"];
+// Status columns visible to all (non-management see Completed as locked)
+const ALL_STATUSES = ["Pending", "In Progress", "Review", "Pending_Approval", "Completed"];
+const EMPLOYEE_ALLOWED_STATUSES = ["Pending", "In Progress", "Review"]; // Can drag to these
+const MANAGEMENT_ROLES = ["admin", "founder", "manager", "super admin"];
 
 export function TasksPage() {
   const { user } = useAuthStore();
@@ -39,6 +49,9 @@ export function TasksPage() {
   if (!canAccessRoute(user?.role, "/tasks")) {
     return <AccessDenied resource="Tasks" />;
   }
+
+  const userRole = (user?.role || "").toLowerCase();
+  const isManagement = MANAGEMENT_ROLES.includes(userRole);
 
   const { data: tasks, isLoading } = useTasks();
   const { data: projects } = useProjects();
@@ -49,6 +62,9 @@ export function TasksPage() {
   const updateTask = useUpdateTask();
   const updateTaskStatus = useUpdateTaskStatus();
   const deleteTask = useDeleteTask();
+  const submitCompletion = useSubmitTaskCompletion();
+  const approveCompletion = useApproveTaskCompletion();
+  const denyCompletion = useDenyTaskCompletion();
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -61,11 +77,30 @@ export function TasksPage() {
   const [status, setStatus] = useState("Pending");
   const [deadline, setDeadline] = useState("");
 
+  // Deny dialog state (inline for admin popup in tasks)
+  const [denyDialogOpen, setDenyDialogOpen] = useState(false);
+  const [denyTaskId, setDenyTaskId] = useState<string | null>(null);
+  const [denyTaskTitle, setDenyTaskTitle] = useState("");
+  const [denyReason, setDenyReason] = useState("");
+
+  // Task detail dialog (for "Verify Task")
+  const [verifyTask, setVerifyTask] = useState<any | null>(null);
+
   const onDragEnd = (result: any) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
     const newStatus = destination.droppableId;
+
+    // ── Frontend guard: non-management cannot drop to Completed ──────────────
+    if (!isManagement && (newStatus === "Completed" || newStatus === "Pending_Approval")) {
+      if (newStatus === "Completed") {
+        toast.error("🔒 Admin approval required to complete tasks. Use 'Submit for Completion' instead.");
+        return;
+      }
+    }
+
     updateTaskStatus.mutate(
       { id: draggableId, status: newStatus },
       {
@@ -146,6 +181,11 @@ export function TasksPage() {
   };
 
   const handleStatusChange = (id: string, newStatus: string) => {
+    // Frontend guard
+    if (!isManagement && newStatus === "Completed") {
+      toast.error("🔒 Admin approval required. Use 'Submit for Completion' instead.");
+      return;
+    }
     updateTaskStatus.mutate(
       { id, status: newStatus },
       {
@@ -164,9 +204,73 @@ export function TasksPage() {
     }
   };
 
+  const handleSubmitForCompletion = (taskId: string) => {
+    submitCompletion.mutate(taskId, {
+      onSuccess: () => toast.success("Task submitted for completion approval!"),
+      onError: (err: any) => toast.error(err.response?.data?.message || "Failed to submit task"),
+    });
+  };
+
+  const handleApprove = (taskId: string) => {
+    approveCompletion.mutate(taskId, {
+      onSuccess: () => toast.success("Task approved and marked as Completed!"),
+      onError: (err: any) => toast.error(err.response?.data?.message || "Failed to approve task"),
+    });
+  };
+
+  const openDenyDialog = (taskId: string, taskTitle: string) => {
+    setDenyTaskId(taskId);
+    setDenyTaskTitle(taskTitle);
+    setDenyReason("");
+    setDenyDialogOpen(true);
+  };
+
+  const handleConfirmDeny = () => {
+    if (!denyTaskId || !denyReason.trim()) return;
+    denyCompletion.mutate(
+      { taskId: denyTaskId, reason: denyReason },
+      {
+        onSuccess: () => {
+          toast.success("Task completion denied.");
+          setDenyDialogOpen(false);
+          setDenyTaskId(null);
+        },
+        onError: (err: any) => toast.error(err.response?.data?.message || "Failed to deny task"),
+      }
+    );
+  };
+
   const canCreate = hasPermission(user?.role, "tasks", "create");
   const canEdit = hasPermission(user?.role, "tasks", "update");
   const canDelete = hasPermission(user?.role, "tasks", "delete");
+
+  const getStatusColor = (st: string) => {
+    switch (st) {
+      case "Pending": return "border-slate-500/30 bg-slate-500/5";
+      case "In Progress": return "border-blue-500/30 bg-blue-500/5";
+      case "Review": return "border-amber-500/30 bg-amber-500/5";
+      case "Pending_Approval": return "border-purple-500/30 bg-purple-500/5";
+      case "Completed": return "border-green-500/30 bg-green-500/5";
+      default: return "border-border bg-card/60";
+    }
+  };
+
+  const getStatusLabel = (st: string) => {
+    if (st === "Pending_Approval") return "Waiting Approval";
+    return st;
+  };
+
+  const getStatusBadgeColor = (st: string) => {
+    switch (st) {
+      case "In Progress": return "bg-blue-500/20 text-blue-400";
+      case "Review": return "bg-amber-500/20 text-amber-400";
+      case "Pending_Approval": return "bg-purple-500/20 text-purple-400";
+      case "Completed": return "bg-green-500/20 text-green-400";
+      default: return "bg-slate-500/20 text-slate-400";
+    }
+  };
+
+  const visibleStatuses = isManagement ? ALL_STATUSES : ALL_STATUSES;
 
   return (
     <PageContainer>
@@ -202,40 +306,66 @@ export function TasksPage() {
           </div>
         ) : (
           <DragDropContext onDragEnd={onDragEnd}>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {taskStatuses.map((st) => {
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              {visibleStatuses.map((st) => {
                 const statusTasks = tasks.filter((t: any) => t.status === st);
+                const isLockedForEmployee = !isManagement && st === "Completed";
+                const isPendingApproval = st === "Pending_Approval";
+
                 return (
-                  <Droppable key={st} droppableId={st}>
+                  <Droppable
+                    key={st}
+                    droppableId={st}
+                    isDropDisabled={isLockedForEmployee}
+                  >
                     {(provided) => (
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className="rounded-2xl border border-border bg-card/60 p-4 flex flex-col min-h-[340px]"
+                        className={`rounded-2xl border p-4 flex flex-col min-h-[340px] transition-colors ${getStatusColor(st)} ${isLockedForEmployee ? "opacity-75" : ""}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">{st}</h3>
+                          <div className="flex items-center gap-1.5">
+                            {isLockedForEmployee && (
+                              <Lock className="h-3 w-3 text-muted-foreground" />
+                            )}
+                            {isPendingApproval && (
+                              <Clock className="h-3 w-3 text-purple-400" />
+                            )}
+                            <h3 className="text-sm font-semibold">{getStatusLabel(st)}</h3>
+                          </div>
                           <Badge variant="secondary" className="rounded-full">
                             {statusTasks.length}
                           </Badge>
                         </div>
 
+                        {isLockedForEmployee && (
+                          <p className="text-[10px] text-muted-foreground text-center mb-2">
+                            🔒 Admin approval required
+                          </p>
+                        )}
+
                         <div className="space-y-3 flex-1 overflow-y-auto min-h-[200px]">
                           {statusTasks.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-6">No tasks in {st}</p>
+                            <p className="text-xs text-muted-foreground text-center py-6">
+                              No tasks in {getStatusLabel(st)}
+                            </p>
                           ) : (
                             statusTasks.map((t: any, index: number) => {
                               const taskId = t._id || t.id;
                               return (
-                                <Draggable key={taskId} draggableId={taskId} index={index}>
+                                <Draggable
+                                  key={taskId}
+                                  draggableId={taskId}
+                                  index={index}
+                                  isDragDisabled={isLockedForEmployee}
+                                >
                                   {(draggableProvided, snapshot) => (
                                     <div
                                       ref={draggableProvided.innerRef}
                                       {...draggableProvided.draggableProps}
                                       {...draggableProvided.dragHandleProps}
-                                      className={`p-3 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between cursor-grab active:cursor-grabbing ${
-                                        snapshot.isDragging ? "ring-2 ring-primary shadow-lg" : ""
-                                      }`}
+                                      className={`p-3 bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between ${isLockedForEmployee ? "cursor-default" : "cursor-grab active:cursor-grabbing"} ${snapshot.isDragging ? "ring-2 ring-primary shadow-lg" : ""}`}
                                     >
                                       <div>
                                         <div className="flex items-start justify-between gap-1">
@@ -271,34 +401,102 @@ export function TasksPage() {
                                         {t.description && (
                                           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{t.description}</p>
                                         )}
+
+                                        {/* Assignee */}
+                                        {t.assignedTo?.name && (
+                                          <p className="text-[10px] text-muted-foreground mt-1">
+                                            👤 {t.assignedTo.name}
+                                          </p>
+                                        )}
+
+                                        {/* Denial reason */}
+                                        {t.completionDenied && t.denialReason && (
+                                          <div className="mt-1.5 text-[10px] bg-rose-500/10 border border-rose-500/20 rounded-lg px-2 py-1 text-rose-400">
+                                            <span className="font-semibold">Denied:</span> {t.denialReason}
+                                          </div>
+                                        )}
                                       </div>
 
-                                      <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-xs">
-                                        <select
-                                          value={t.status}
-                                          onChange={(e) => handleStatusChange(taskId, e.target.value)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none"
-                                        >
-                                          {taskStatuses.map((s) => (
-                                            <option key={s} value={s}>
-                                              {s}
-                                            </option>
-                                          ))}
-                                        </select>
+                                      <div className="mt-3 pt-2 border-t border-border/50 flex flex-col gap-2">
+                                        {/* Status select — only show statuses allowed for role */}
+                                        <div className="flex items-center justify-between text-xs">
+                                          <select
+                                            value={t.status}
+                                            onChange={(e) => handleStatusChange(taskId, e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-[11px] bg-muted/60 border border-border rounded-md px-1.5 py-0.5 text-foreground focus:outline-none"
+                                          >
+                                            {/* Non-management can't select Completed or set Pending_Approval directly */}
+                                            {ALL_STATUSES.filter((s) => {
+                                              if (!isManagement && s === "Completed") return false;
+                                              if (!isManagement && s === "Pending_Approval") return false;
+                                              return true;
+                                            }).map((s) => (
+                                              <option key={s} value={s}>
+                                                {getStatusLabel(s)}
+                                              </option>
+                                            ))}
+                                          </select>
 
-                                        <Badge
-                                          variant="outline"
-                                          className={`text-[10px] rounded-md ${
-                                            t.priority === "Critical"
-                                              ? "text-rose-500 border-rose-500/30"
-                                              : t.priority === "High"
-                                              ? "text-amber-500 border-amber-500/30"
-                                              : "text-muted-foreground"
-                                          }`}
-                                        >
-                                          {t.priority || "Medium"}
-                                        </Badge>
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-[10px] rounded-md ${
+                                              t.priority === "Critical"
+                                                ? "text-rose-500 border-rose-500/30"
+                                                : t.priority === "High"
+                                                ? "text-amber-500 border-amber-500/30"
+                                                : "text-muted-foreground"
+                                            }`}
+                                          >
+                                            {t.priority || "Medium"}
+                                          </Badge>
+                                        </div>
+
+                                        {/* Submit for Completion button — only for non-management on In Progress / Review tasks */}
+                                        {!isManagement &&
+                                          (t.status === "In Progress" || t.status === "Review") && (
+                                            <Button
+                                              size="sm"
+                                              className="w-full h-6 text-[10px] rounded-lg bg-purple-600 hover:bg-purple-700 text-white gap-1"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleSubmitForCompletion(taskId);
+                                              }}
+                                              disabled={submitCompletion.isPending}
+                                            >
+                                              <Send className="w-2.5 h-2.5" />
+                                              Submit for Completion
+                                            </Button>
+                                          )}
+
+                                        {/* Admin Approve/Deny for Pending_Approval tasks */}
+                                        {isManagement && t.status === "Pending_Approval" && (
+                                          <div className="flex gap-1">
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="flex-1 h-6 text-[10px] rounded-lg text-rose-400 hover:bg-rose-500/10 border border-rose-500/20"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                openDenyDialog(taskId, t.title);
+                                              }}
+                                            >
+                                              Deny
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              className="flex-1 h-6 text-[10px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleApprove(taskId);
+                                              }}
+                                              disabled={approveCompletion.isPending}
+                                            >
+                                              <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
+                                              Approve
+                                            </Button>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -318,6 +516,7 @@ export function TasksPage() {
         )}
       </SectionCard>
 
+      {/* Create / Edit Task Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
@@ -434,7 +633,7 @@ export function TasksPage() {
                   <option value="Pending">Pending</option>
                   <option value="In Progress">In Progress</option>
                   <option value="Review">Review</option>
-                  <option value="Completed">Completed</option>
+                  {isManagement && <option value="Completed">Completed</option>}
                 </select>
               </div>
             </div>
@@ -460,17 +659,95 @@ export function TasksPage() {
                 className="rounded-xl gradient-royal text-white hover:opacity-90"
               >
                 {editingId
-                  ? updateTask.isPending
-                    ? "Updating..."
-                    : "Update Task"
-                  : createTask.isPending
-                  ? "Creating..."
-                  : "Create Task"}
+                  ? updateTask.isPending ? "Updating..." : "Update Task"
+                  : createTask.isPending ? "Creating..." : "Create Task"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Deny Completion Dialog */}
+      <Dialog open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
+        <DialogContent className="max-w-sm bg-background text-foreground border-border rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400">Deny Completion</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Why are you denying completion of "{denyTaskTitle}"?
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={denyReason}
+            onChange={(e) => setDenyReason(e.target.value)}
+            placeholder="Enter reason for denial..."
+            className="rounded-xl border-border min-h-[80px]"
+          />
+          <DialogFooter>
+            <Button variant="ghost" className="rounded-xl" onClick={() => setDenyDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="rounded-xl bg-rose-500 text-white hover:bg-rose-600"
+              onClick={handleConfirmDeny}
+              disabled={!denyReason.trim() || denyCompletion.isPending}
+            >
+              {denyCompletion.isPending ? "Denying..." : "Deny Completion"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Verify Task Dialog */}
+      <Dialog open={!!verifyTask} onOpenChange={() => setVerifyTask(null)}>
+        <DialogContent className="max-w-lg bg-background text-foreground border-border rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Task Details</DialogTitle>
+          </DialogHeader>
+          {verifyTask && (
+            <div className="space-y-3 text-sm">
+              <div><span className="font-semibold">Title:</span> {verifyTask.title}</div>
+              <div><span className="font-semibold">Description:</span> {verifyTask.description || "—"}</div>
+              <div><span className="font-semibold">Assigned to:</span> {verifyTask.assignedTo?.name || "Unassigned"}</div>
+              <div><span className="font-semibold">Priority:</span> {verifyTask.priority}</div>
+              <div><span className="font-semibold">Status:</span> {getStatusLabel(verifyTask.status)}</div>
+              <div><span className="font-semibold">Progress:</span> {verifyTask.progress}%</div>
+              {verifyTask.deadline && (
+                <div><span className="font-semibold">Deadline:</span> {new Date(verifyTask.deadline).toLocaleDateString()}</div>
+              )}
+              {verifyTask.submittedForApprovalAt && (
+                <div><span className="font-semibold">Submitted at:</span> {new Date(verifyTask.submittedForApprovalAt).toLocaleString()}</div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" className="rounded-xl" onClick={() => setVerifyTask(null)}>Close</Button>
+            {isManagement && verifyTask?.status === "Pending_Approval" && (
+              <>
+                <Button
+                  className="rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+                  variant="ghost"
+                  onClick={() => {
+                    setVerifyTask(null);
+                    openDenyDialog(verifyTask._id || verifyTask.id, verifyTask.title);
+                  }}
+                >
+                  Deny
+                </Button>
+                <Button
+                  className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => {
+                    handleApprove(verifyTask._id || verifyTask.id);
+                    setVerifyTask(null);
+                  }}
+                >
+                  Approve
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Toaster />
     </PageContainer>
   );

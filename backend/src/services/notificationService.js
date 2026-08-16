@@ -10,7 +10,12 @@ const createNotification = async ({
   type = 'general',
   entityType = null,
   entityId = null,
-  icon = null
+  relatedId = null,
+  relatedType = null,
+  actionUrl = null,
+  icon = null,
+  metadata = {},
+  expiresAt = null
 }) => {
   try {
     await Notification.create({
@@ -20,7 +25,12 @@ const createNotification = async ({
       type,
       entityType,
       entityId,
-      icon
+      relatedId: relatedId || entityId,
+      relatedType: relatedType || entityType,
+      actionUrl,
+      icon,
+      metadata,
+      expiresAt
     });
   } catch (err) {
     console.error('Notification creation error:', err.message);
@@ -30,6 +40,12 @@ const createNotification = async ({
 const getNotifications = async (userId, unreadOnly = false) => {
   const filter = { user: userId };
   if (unreadOnly) filter.isRead = false;
+  
+  // Exclude expired notifications
+  filter.$or = [
+    { expiresAt: null },
+    { expiresAt: { $gt: new Date() } }
+  ];
   
   return Notification.find(filter)
     .sort({ createdAt: -1 })

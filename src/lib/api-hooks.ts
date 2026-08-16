@@ -526,28 +526,37 @@ export const useUpdateVenture = () => {
 };
 
 // Chat Hooks
-export const useChatMessages = (channel: string = 'general', recipientId?: string) => {
+export const useChatMessages = (channel?: string, recipientId?: string) => {
   return useQuery({
-    queryKey: ['chat-messages', channel, recipientId],
+    queryKey: ['chat-messages', channel ?? 'general', recipientId],
     queryFn: async () => {
       const params: any = {};
       if (recipientId) params.recipientId = recipientId;
-      else params.channel = channel;
+      else params.channel = channel ?? 'general';
       const res = await api.get('/chat/messages', { params });
       return res.data.data;
-    }
+    },
+    enabled: !!channel,
+    staleTime: 0, // Always fetch fresh data — real-time driven via socket
   });
 };
 
 export const useSendMessage = () => {
-  const queryClient = useQueryClient();
+  // NOTE: We do NOT auto-invalidate here.
+  // The caller manages optimistic UI via clientMessageId reconciliation.
+  // The socket event 'message:new' drives real-time updates.
   return useMutation({
-    mutationFn: async (payload: { content: string; channel?: string; recipientId?: string }) => {
+    mutationFn: async (payload: {
+      content: string;
+      channel?: string;
+      recipientId?: string;
+      messageType?: string;
+      attachments?: any[];
+      text?: string;
+      clientMessageId?: string;
+    }) => {
       const res = await api.post('/chat/messages', payload);
       return res.data.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
     }
   });
 };
@@ -563,6 +572,18 @@ export const useAnnouncements = () => {
   });
 };
 
+// Only active (non-expired, isActive=true) announcements — used by popup
+export const useActiveAnnouncements = () => {
+  return useQuery({
+    queryKey: ['announcements-active'],
+    queryFn: async () => {
+      const res = await api.get('/announcements/active');
+      return res.data.data;
+    },
+    staleTime: 60_000 // 1 minute cache
+  });
+};
+
 export const useCreateAnnouncement = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -572,6 +593,7 @@ export const useCreateAnnouncement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['announcements'] });
+      queryClient.invalidateQueries({ queryKey: ['announcements-active'] });
     }
   });
 };
@@ -585,6 +607,48 @@ export const useDeleteAnnouncement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['announcements'] });
+      queryClient.invalidateQueries({ queryKey: ['announcements-active'] });
+    }
+  });
+};
+
+// ── Task Approval Hooks ───────────────────────────────────────────────────────
+
+export const useSubmitTaskCompletion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const res = await api.post(`/tasks/${taskId}/submit-completion`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    }
+  });
+};
+
+export const useApproveTaskCompletion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const res = await api.post(`/tasks/${taskId}/approve-completion`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    }
+  });
+};
+
+export const useDenyTaskCompletion = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, reason }: { taskId: string; reason: string }) => {
+      const res = await api.post(`/tasks/${taskId}/deny-completion`, { reason });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     }
   });
 };
@@ -737,10 +801,21 @@ export const useDirectConversation = (userId?: string) => {
 export const useSendDirectMessage = (userId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { text: string; messageType?: string; attachments?: any[] }) => {
+    mutationFn: async (payload: {
+      text: string;
+      content?: string;
+      messageType?: string;
+      attachments?: any[];
+      clientMessageId?: string;  // idempotency key
+    }) => {
       const res = await api.post(`/communication/direct/${userId}/messages`, payload);
       return res.data.data;
     },
+    // Layer 1: Cancel any in-flight refetches so they don't race our mutation.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['direct-messages', userId] });
+    },
+    // Layer 2: On success, invalidate to pull the single authoritative server list.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['direct-messages', userId] });
       queryClient.invalidateQueries({ queryKey: ['direct-users'] });
@@ -756,7 +831,8 @@ export const useDirectMessages = (userId?: string) => {
       const res = await api.get(`/communication/direct/${userId}/messages`);
       return res.data.data;
     },
-    enabled: !!userId
+    enabled: !!userId,
+    staleTime: 0, // Always fetch fresh — socket-driven invalidation is the control plane
   });
 };
 

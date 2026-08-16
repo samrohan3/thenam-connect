@@ -115,27 +115,53 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+// Singleton socket instance shared across the app via window object
+// so it can be accessed by NotificationHub and CommunicationPage without re-connecting
+declare global {
+  interface Window {
+    __erpSocket?: ReturnType<typeof io>;
+  }
+}
+
+export function getSocket() {
+  if (typeof window === "undefined") return null;
+  if (!window.__erpSocket) {
+    const apiUrl =
+      import.meta.env.VITE_API_URL?.replace("/api", "") ||
+      "http://localhost:5000";
+    window.__erpSocket = io(apiUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+    });
+  }
+  return window.__erpSocket;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => {
-    // Connect to the socket server
-    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
-    const socket = io(apiUrl);
+    const socket = getSocket();
+    if (!socket) return;
 
-    socket.on('connect', () => {
-      console.log('Connected to real-time updates');
-    });
+    const handleConnect = () => {
+      console.log("[Socket] Connected:", socket.id);
+      // Re-register user room after reconnection (handled in _app.tsx after auth)
+    };
 
-    socket.on('invalidate', (keys: string[]) => {
-      // Keys is an array of string query keys that need to be invalidated
-      keys.forEach(key => {
+    const handleInvalidate = (keys: string[]) => {
+      keys.forEach((key) => {
         queryClient.invalidateQueries({ queryKey: [key] });
       });
-    });
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("invalidate", handleInvalidate);
 
     return () => {
-      socket.disconnect();
+      socket.off("connect", handleConnect);
+      socket.off("invalidate", handleInvalidate);
     };
   }, [queryClient]);
 

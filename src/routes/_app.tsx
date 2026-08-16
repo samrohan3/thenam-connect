@@ -5,8 +5,9 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { useAuthStore } from "@/store/authStore";
-import { AnnouncementPopup } from "@/components/announcements/AnnouncementPopup";
 import { useNotifications } from "@/lib/api-hooks";
+import { NotificationHub } from "@/components/notifications/NotificationHub";
+import { getSocket } from "@/routes/__root";
 import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { useRef } from "react";
@@ -71,7 +72,7 @@ function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, user } = useAuthStore();
 
   useEffect(() => {
     checkAuth();
@@ -82,6 +83,29 @@ function AppLayout() {
       navigate({ to: "/login" });
     }
   }, [isAuthenticated, isLoading, navigate]);
+
+  // ── Register user's socket room after auth ─────────────────────────────────
+  useEffect(() => {
+    if (!user || !isAuthenticated) return;
+    const userId = (user as any)?._id || (user as any)?.id;
+    const role = user?.role || "developer";
+    if (!userId) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const register = () => {
+      socket.emit("register", { userId, role });
+    };
+
+    // Register immediately and also after reconnect
+    register();
+    socket.on("connect", register);
+
+    return () => {
+      socket.off("connect", register);
+    };
+  }, [user, isAuthenticated]);
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -97,7 +121,8 @@ function AppLayout() {
   return (
     <ThemeProvider>
       <div className="min-h-screen w-full bg-background text-foreground flex">
-        <AnnouncementPopup />
+        {/* Global notification hub — announcements, task notifications */}
+        <NotificationHub />
         <EmployeeCelebration />
         <AppSidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
         <div className="flex-1 min-w-0 flex flex-col">

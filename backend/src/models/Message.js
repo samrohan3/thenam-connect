@@ -2,6 +2,17 @@ const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema(
   {
+    // ── Idempotency key ─────────────────────────────────────────────────────
+    // Generated on the client (crypto.randomUUID) before the POST request.
+    // Unique sparse index prevents a second DB record even if the same
+    // request is retried, double-submitted, or replayed by a network proxy.
+    clientMessageId: {
+      type: String,
+      index: true,
+      sparse: true,  // allows null/undefined for legacy messages
+      unique: true,
+    },
+
     conversationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Conversation',
@@ -14,7 +25,7 @@ const messageSchema = new mongoose.Schema(
       required: true,
       index: true
     },
-    sender: { // For compatibility
+    sender: { // compatibility alias
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
@@ -26,7 +37,7 @@ const messageSchema = new mongoose.Schema(
       default: null,
       index: true
     },
-    recipient: { // For compatibility
+    recipient: { // compatibility alias
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,
@@ -37,7 +48,7 @@ const messageSchema = new mongoose.Schema(
       default: null,
       index: true
     },
-    channel: { // For compatibility
+    channel: { // compatibility alias
       type: String,
       default: 'general',
       index: true
@@ -52,7 +63,7 @@ const messageSchema = new mongoose.Schema(
       trim: true,
       default: ''
     },
-    content: { // For compatibility
+    content: { // compatibility alias
       type: String,
       trim: true,
       default: ''
@@ -61,9 +72,13 @@ const messageSchema = new mongoose.Schema(
       {
         url: { type: String, required: true },
         name: { type: String, required: true },
-        type: { type: String }, // MIME type
+        type: { type: String },
         size: { type: Number },
-        storageProvider: { type: String, enum: ['firebase', 'google-drive'], default: 'firebase' },
+        storageProvider: {
+          type: String,
+          enum: ['firebase', 'google-drive', 'local', 'server'],
+          default: 'firebase'
+        },
         storagePath: { type: String },
         uploadedAt: { type: Date, default: Date.now }
       }
@@ -78,31 +93,19 @@ const messageSchema = new mongoose.Schema(
   }
 );
 
-// Pre-validate hook to keep compatibility fields synchronized before validation runs
+// Pre-validate hook — keeps compatibility aliases in sync
 messageSchema.pre('validate', function (next) {
-  if (this.senderId && !this.sender) {
-    this.sender = this.senderId;
-  } else if (this.sender && !this.senderId) {
-    this.senderId = this.sender;
-  }
+  if (this.senderId && !this.sender) this.sender = this.senderId;
+  else if (this.sender && !this.senderId) this.senderId = this.sender;
 
-  if (this.receiverId && !this.recipient) {
-    this.recipient = this.receiverId;
-  } else if (this.recipient && !this.receiverId) {
-    this.receiverId = this.recipient;
-  }
+  if (this.receiverId && !this.recipient) this.recipient = this.receiverId;
+  else if (this.recipient && !this.receiverId) this.receiverId = this.recipient;
 
-  if (this.channelId && !this.channel) {
-    this.channel = this.channelId;
-  } else if (this.channel && !this.channelId) {
-    this.channelId = this.channel;
-  }
+  if (this.channelId && !this.channel) this.channel = this.channelId;
+  else if (this.channel && !this.channelId) this.channelId = this.channel;
 
-  if (this.text && !this.content) {
-    this.content = this.text;
-  } else if (this.content && !this.text) {
-    this.text = this.content;
-  }
+  if (this.text && !this.content) this.content = this.text;
+  else if (this.content && !this.text) this.text = this.content;
 
   next();
 });

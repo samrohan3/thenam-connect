@@ -13,6 +13,14 @@ router.route('/:id/status')
     .patch(canAccess('tasks', 'update'), taskController.updateTaskStatus)
     .put(canAccess('tasks', 'update'), taskController.updateTaskStatus);
 
+// ── Approval workflow endpoints ───────────────────────────────────────────────
+// Any authenticated user with task:update can submit (service enforces non-admin)
+router.post('/:id/submit-completion', canAccess('tasks', 'update'), taskController.submitCompletion);
+
+// Only management can approve or deny (canAccess checks delete = management level)
+router.post('/:id/approve-completion', canAccess('tasks', 'delete'), taskController.approveCompletion);
+router.post('/:id/deny-completion', canAccess('tasks', 'delete'), taskController.denyCompletion);
+
 router.route('/:id')
     .get(canAccess('tasks', 'read'), taskController.getTask)
     .put(canAccess('tasks', 'update'), taskController.updateTask)

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, DragEvent } from "react";
+import { useState, useRef, useEffect, useCallback, DragEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { SectionCard } from "@/components/ui-ext/section-card";
@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  MessageSquare, Send, Bell, Hash, User as UserIcon, Plus, Megaphone, 
-  Trash2, Pin, ShieldCheck, Search, Image, Video, FileText, Paperclip, 
-  ExternalLink, X, Loader2, RefreshCw, Download, Globe, AlertCircle, Eye
+import {
+  MessageSquare, Send, Bell, Hash, Plus, Megaphone,
+  Trash2, Pin, ShieldCheck, Search, Image, Video, FileText, Paperclip,
+  ExternalLink, X, Loader2, Download, Globe, Eye,
+  ChevronDown, Check, CheckCheck, AlertCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -21,14 +23,14 @@ import {
   useAnnouncements,
   useCreateAnnouncement,
   useDeleteAnnouncement,
-  // New API hooks
   useDirectUsers,
   useDirectConversation,
   useSendDirectMessage,
   useDirectMessages,
-  useMarkMessageRead,
 } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
+import { normalizeRole } from "@/lib/permissions";
+import api from "@/lib/api";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -40,15 +42,18 @@ import {
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { parseGoogleDriveLink, loadGoogleScripts } from "@/lib/google-drive";
+import { getSocket } from "@/routes/__root";
 
 export const Route = createFileRoute("/_app/communication")({
   head: () => ({ meta: [{ title: "Communication — Thenam ERP" }] }),
   component: CommunicationPage,
 });
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 interface ActiveChat {
   type: "channel" | "dm";
-  id: string; // 'general' or recipient user ID
+  id: string;                      // 'general' or recipient user _id
   recipientUserId?: string;
   name: string;
   avatar?: string;
@@ -59,64 +64,105 @@ interface DraftAttachment {
   id: string;
   file?: File;
   name: string;
-  type: string; // mime classification
+  type: string;   // 'image' | 'video' | 'file'
   size: number;
   progress: number;
   status: "uploading" | "uploaded" | "failed";
   url?: string;
   storagePath?: string;
-  provider: "firebase" | "google-drive";
+  provider: "firebase" | "google-drive" | "local";
   fileId?: string;
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getFileUrl(url?: string) {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+    return url;
+  }
+  const backendBase = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
+  return `${backendBase}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatTime(d: string | Date) {
+  return new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function classifyMime(file: File): "image" | "video" | "file" {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return "file";
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 function CommunicationPage() {
   const { user } = useAuthStore();
   const currentUserId = (user as any)?._id || (user as any)?.id;
+  const queryClient = useQueryClient();
 
+  // ── Composer state ────────────────────────────────────────────────────────
   const [draft, setDraft] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Attachment states
   const [draftAttachments, setDraftAttachments] = useState<DraftAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [gdModalOpen, setGdModalOpen] = useState(false);
-  const [gdLinkInput, setGdLinkInput] = useState("");
-  const [gdNameInput, setGdNameInput] = useState("");
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isSendingRef = useRef(false);            // double-click guard
 
-  // Pending (local) messages state
-  const [pendingMessages, setPendingMessages] = useState<any[]>([]);
+  // ── Scroll state ──────────────────────────────────────────────────────────
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevChatIdRef = useRef("");
+  const [showNewMessages, setShowNewMessages] = useState(false);
 
-  // Announcement modal state
-  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
-  const [annTitle, setAnnTitle] = useState("");
-  const [annContent, setAnnContent] = useState("");
-  const [annPinned, setAnnPinned] = useState(false);
-
-  // Role permissions check for Announcements
-  const userRole = (user?.role || "").toLowerCase();
-  const canPostAnnouncement = ["admin", "founder", "manager", "super admin"].includes(userRole);
-
-  // Active chat state (default to #general channel)
+  // ── Search & active conversation ──────────────────────────────────────────
+  const [searchTerm, setSearchTerm] = useState("");
   const [activeChat, setActiveChat] = useState<ActiveChat>({
     type: "channel",
     id: "general",
     name: "general",
   });
+  const activeChatRef = useRef(activeChat);
+  useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
 
-  // Queries & Mutations
+  // ── Announcement modal ────────────────────────────────────────────────────
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [annTitle, setAnnTitle] = useState("");
+  const [annContent, setAnnContent] = useState("");
+  const [annPinned, setAnnPinned] = useState(false);
+
+  // ── Google Drive modal ────────────────────────────────────────────────────
+  const [gdModalOpen, setGdModalOpen] = useState(false);
+  const [gdLinkInput, setGdLinkInput] = useState("");
+  const [gdNameInput, setGdNameInput] = useState("");
+
+  const userRole = normalizeRole(user?.role).toLowerCase();
+  const canPostAnnouncement =
+    ["admin", "founder"].includes(userRole) ||
+    ["admin", "founder", "manager", "super admin"].includes((user?.role || "").toLowerCase());
+
+  // ── API Hooks ─────────────────────────────────────────────────────────────
   const { data: directUsers, isLoading: isUsersLoading } = useDirectUsers();
   const { data: notifications, isLoading: isNotifsLoading } = useNotifications();
   const markNotifRead = useMarkNotificationRead();
 
-  // Channel Message Queries (General)
+  // Channel (General) — only enabled when in channel mode
   const { data: channelMessages, isLoading: isChannelMessagesLoading } = useChatMessages(
     activeChat.type === "channel" ? activeChat.id : undefined
   );
   const sendChannelMessage = useSendMessage();
 
-  // Direct Message Queries
+  // DM — only enabled when in dm mode
   const { data: directConversation } = useDirectConversation(
     activeChat.type === "dm" ? activeChat.recipientUserId : undefined
   );
@@ -129,440 +175,460 @@ function CommunicationPage() {
   const createAnnouncement = useCreateAnnouncement();
   const deleteAnnouncement = useDeleteAnnouncement();
 
-  const isMessagesLoading = activeChat.type === "channel" ? isChannelMessagesLoading : isDirectMessagesLoading;
-  const dbMessages = activeChat.type === "channel" ? channelMessages : directMessages;
+  const isMessagesLoading =
+    activeChat.type === "channel" ? isChannelMessagesLoading : isDirectMessagesLoading;
 
-  // Clear pending messages matching loaded DB messages
+  // Single authoritative list — direct from server via React Query
+  const messages: any[] = activeChat.type === "channel"
+    ? (channelMessages || [])
+    : (directMessages || []);
+
+  const isSending = sendChannelMessage.isPending || sendDirectMessage.isPending;
+
+  // ── Scroll helpers ────────────────────────────────────────────────────────
+  const scrollToBottom = useCallback((smooth = true) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : ("instant" as any) });
+  }, []);
+
+  const handleScrollEvent = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = dist < 120;
+    if (isNearBottomRef.current) setShowNewMessages(false);
+  }, []);
+
+  // On conversation switch → jump to bottom instantly
   useEffect(() => {
-    if (dbMessages && dbMessages.length > 0 && pendingMessages.length > 0) {
-      setPendingMessages((prev) =>
-        prev.filter((pMsg) => !dbMessages.some((dbMsg: any) => dbMsg.text === pMsg.text && dbMsg.createdAt === pMsg.createdAt))
-      );
+    const chatId =
+      activeChat.type === "dm" ? activeChat.recipientUserId! : activeChat.id;
+    if (chatId !== prevChatIdRef.current) {
+      prevChatIdRef.current = chatId;
+      isNearBottomRef.current = true;
+      setShowNewMessages(false);
+      setTimeout(() => scrollToBottom(false), 80);
     }
-  }, [dbMessages, pendingMessages]);
+  }, [activeChat, scrollToBottom]);
 
-  // Combine DB and Pending messages for rendering
-  const messages = [
-    ...(dbMessages || []),
-    ...pendingMessages.filter(
-      (pMsg) =>
-        pMsg.recipientUserId === activeChat.recipientUserId ||
-        (activeChat.type === "channel" && pMsg.channel === activeChat.id)
-    ),
-  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-  // Scroll to bottom when messages load/update
+  // On new messages — scroll if near bottom, else show banner
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Handle Drag & Drop events
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFilesUpload(Array.from(e.dataTransfer.files));
+    if (!messages.length) return;
+    if (isNearBottomRef.current) {
+      scrollToBottom();
+      setShowNewMessages(false);
+    } else {
+      setShowNewMessages(true);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
-  // Perform Firebase Storage uploads
-  const handleFilesUpload = (files: File[]) => {
-    const validFiles = files.filter((file) => {
-      if (file.size > 25 * 1024 * 1024) {
-        toast.error(`File "${file.name}" is larger than the 25MB upload limit.`);
-        return false;
+  // Close attach menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
       }
-      return true;
-    });
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-    validFiles.forEach((file) => {
-      const localId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      let typeClassification = "file";
-      if (file.type.startsWith("image/")) typeClassification = "image";
-      else if (file.type.startsWith("video/")) typeClassification = "video";
+  // ── Socket: real-time message events ─────────────────────────────────────
+  // Listen to message:new (channel messages) and dm:new (direct messages).
+  // When received, invalidate the correct React Query cache to refresh messages.
+  // The backend uses clientMessageId idempotency to guarantee no duplicate DB entries.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
 
+    const handleMessageNew = (data: any) => {
+      const currentChat = activeChatRef.current;
+      if (currentChat.type === "channel" && data._channelKey === currentChat.id) {
+        queryClient.invalidateQueries({ queryKey: ["chat-messages", currentChat.id] });
+      }
+    };
+
+    const handleDmNew = (data: any) => {
+      const currentChat = activeChatRef.current;
+      if (currentChat.type === "dm" && data._conversationUserId === currentChat.recipientUserId) {
+        queryClient.invalidateQueries({ queryKey: ["direct-messages", currentChat.recipientUserId] });
+      }
+      // Always refresh direct-users list to update last message preview
+      queryClient.invalidateQueries({ queryKey: ["direct-users"] });
+    };
+
+    socket.on("message:new", handleMessageNew);
+    socket.on("dm:new", handleDmNew);
+
+    return () => {
+      socket.off("message:new", handleMessageNew);
+      socket.off("dm:new", handleDmNew);
+    };
+  }, [queryClient]);
+
+
+  // ── Drag & Drop ───────────────────────────────────────────────────────────
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault(); setIsDragOver(true);
+  };
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault(); setIsDragOver(false);
+  };
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault(); setIsDragOver(false);
+    if (e.dataTransfer.files?.length) handleFilesUpload(Array.from(e.dataTransfer.files));
+  };
+
+  // ── File Upload (Firebase SDK with Server Fallback) ─────────────────────
+  const handleFilesUpload = (files: File[]) => {
+    const LIMITS: Record<string, number> = {
+      image: 10 * 1024 * 1024,
+      video: 50 * 1024 * 1024,
+      file:  25 * 1024 * 1024,
+    };
+
+    files.forEach(async (file) => {
+      const typeClass = classifyMime(file);
+      const limit = LIMITS[typeClass];
+
+      if (file.size > limit) {
+        toast.error(
+          `"${file.name}" is too large. ` +
+          `Max ${typeClass === "video" ? "50 MB" : typeClass === "image" ? "10 MB" : "25 MB"}.`
+        );
+        return;
+      }
+
+      const localId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const newAtt: DraftAttachment = {
         id: localId,
         file,
         name: file.name,
-        type: typeClassification,
+        type: typeClass,
         size: file.size,
-        progress: 0,
+        progress: 10,
         status: "uploading",
         provider: "firebase",
       };
+      setDraftAttachments((p) => [...p, newAtt]);
 
-      setDraftAttachments((prev) => [...prev, newAtt]);
-
-      // Path: communication/direct/{conversationId}/{filename} OR communication/general/{filename}
-      const conversationId = activeChat.type === "dm" ? directConversation?._id || "temp" : "general";
-      const storagePath =
-        activeChat.type === "dm"
-          ? `communication/direct/${conversationId}/${Date.now()}-${file.name}`
-          : `communication/general/${Date.now()}-${file.name}`;
-
-      const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          setDraftAttachments((prev) =>
-            prev.map((att) => (att.id === localId ? { ...att, progress } : att))
-          );
-        },
-        (error) => {
-          console.error("Firebase Storage Upload Error:", error);
-          setDraftAttachments((prev) =>
-            prev.map((att) => (att.id === localId ? { ...att, status: "failed" } : att))
-          );
-          toast.error(`Failed to upload ${file.name}: ${error.message}`);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          setDraftAttachments((prev) =>
-            prev.map((att) =>
-              att.id === localId
-                ? {
-                    ...att,
-                    status: "uploaded",
-                    url: downloadURL,
-                    storagePath,
-                  }
-                : att
+      const uploadToBackendServer = async () => {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          const res = await api.post("/upload/single", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total) {
+                const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                setDraftAttachments((p) =>
+                  p.map((a) => (a.id === localId ? { ...a, progress } : a))
+                );
+              }
+            },
+          });
+          const serverUrl = res.data.data?.url || res.data.data?.path || "";
+          setDraftAttachments((p) =>
+            p.map((a) =>
+              a.id === localId
+                ? { ...a, status: "uploaded", url: serverUrl, provider: "local", progress: 100 }
+                : a
             )
           );
+        } catch (err: any) {
+          console.error("[Upload] Server fallback error:", err);
+          setDraftAttachments((p) =>
+            p.map((a) => (a.id === localId ? { ...a, status: "failed" } : a))
+          );
+          toast.error(`Upload failed for "${file.name}".`);
         }
-      );
+      };
+
+      try {
+        const convId =
+          activeChat.type === "dm"
+            ? directConversation?._id || "temp"
+            : "general";
+        const safeFilename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const storagePath =
+          activeChat.type === "dm"
+            ? `communication/direct/${convId}/${safeFilename}`
+            : `communication/general/${safeFilename}`;
+
+        const storageRef = ref(storage, storagePath);
+        const task = uploadBytesResumable(storageRef, file);
+
+        task.on(
+          "state_changed",
+          (snap) => {
+            const progress = Math.round(
+              (snap.bytesTransferred / snap.totalBytes) * 100
+            );
+            setDraftAttachments((p) =>
+              p.map((a) => (a.id === localId ? { ...a, progress } : a))
+            );
+          },
+          (err) => {
+            console.warn("[Upload] Firebase storage failed, switching to local upload fallback:", err.message);
+            uploadToBackendServer();
+          },
+          async () => {
+            try {
+              const url = await getDownloadURL(task.snapshot.ref);
+              setDraftAttachments((p) =>
+                p.map((a) =>
+                  a.id === localId
+                    ? { ...a, status: "uploaded", url, storagePath, progress: 100 }
+                    : a
+                )
+              );
+            } catch (urlErr) {
+              console.warn("[Upload] Could not get download URL, using server fallback");
+              uploadToBackendServer();
+            }
+          }
+        );
+      } catch (fbErr) {
+        console.warn("[Upload] Firebase init error, using server fallback:", fbErr);
+        uploadToBackendServer();
+      }
     });
   };
 
-  const removeDraftAttachment = (id: string) => {
-    setDraftAttachments((prev) => prev.filter((att) => att.id !== id));
-  };
+  const removeDraftAttachment = (id: string) =>
+    setDraftAttachments((p) => p.filter((a) => a.id !== id));
 
-  // Google Drive Manual Link Attachment Fallback
+  // ── Google Drive ──────────────────────────────────────────────────────────
   const handleAddGoogleDriveLink = (e: React.FormEvent) => {
     e.preventDefault();
     if (!gdLinkInput.trim()) return;
-
     const { fileId, parsedUrl } = parseGoogleDriveLink(gdLinkInput);
-    if (!fileId) {
-      toast.error("Invalid Google Drive Link format. Please paste a valid sharing link.");
-      return;
-    }
-
-    const gdAttachment: DraftAttachment = {
-      id: `gd-${Date.now()}`,
-      name: gdNameInput.trim() || "Google Drive File",
-      type: "file",
-      size: 0,
-      progress: 100,
-      status: "uploaded",
-      url: parsedUrl,
-      provider: "google-drive",
-      fileId,
-    };
-
-    setDraftAttachments((prev) => [...prev, gdAttachment]);
-    setGdLinkInput("");
-    setGdNameInput("");
+    if (!fileId) { toast.error("Invalid Google Drive URL."); return; }
+    setDraftAttachments((p) => [
+      ...p,
+      {
+        id: `gd-${Date.now()}`,
+        name: gdNameInput.trim() || "Google Drive File",
+        type: "file", size: 0, progress: 100,
+        status: "uploaded", url: parsedUrl,
+        provider: "google-drive", fileId,
+      },
+    ]);
+    setGdLinkInput(""); setGdNameInput("");
     setGdModalOpen(false);
     toast.success("Google Drive file attached!");
   };
 
-  // Triggers official Google Picker OAuth flow if env credentials exist
   const handleGooglePickerOpen = async () => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     const developerKey = import.meta.env.VITE_GOOGLE_DEVELOPER_KEY;
-
     if (!clientId || !developerKey) {
-      toast.info("Google OAuth Picker credentials not configured. Please use the Manual Link tab instead.");
+      toast.info("Google OAuth credentials not configured. Please use the manual link tab.");
       return;
     }
-
     try {
-      toast.loading("Connecting Google Drive...");
+      toast.loading("Connecting Google Drive…");
       await loadGoogleScripts();
-      const authInstance = (window as any).gapi.auth2.getAuthInstance();
-      if (!authInstance) {
+      const auth = (window as any).gapi.auth2.getAuthInstance();
+      if (!auth) {
         (window as any).gapi.load("auth2", {
-          callback: () => {
+          callback: () =>
             (window as any).gapi.auth2
-              .init({
-                client_id: clientId,
-                scope: "https://www.googleapis.com/auth/drive.readonly",
-              })
-              .then(() => triggerPicker(developerKey));
-          },
+              .init({ client_id: clientId, scope: "https://www.googleapis.com/auth/drive.readonly" })
+              .then(() => triggerPicker(developerKey)),
         });
       } else {
         triggerPicker(developerKey);
       }
     } catch (err: any) {
       toast.dismiss();
-      console.error(err);
-      toast.error("Failed to load Google SDK Picker: " + err.message);
+      toast.error("Failed to load Google SDK: " + err.message);
     }
   };
 
   const triggerPicker = (developerKey: string) => {
     toast.dismiss();
     const token = (window as any).gapi.auth.getToken();
-    if (token) {
-      createPicker(token.access_token, developerKey);
-    } else {
-      const auth = (window as any).gapi.auth2.getAuthInstance();
-      auth.signIn().then((userObj: any) => {
-        const token = userObj.getAuthResponse().access_token;
-        createPicker(token, developerKey);
-      });
-    }
+    if (token) createPicker(token.access_token, developerKey);
+    else
+      (window as any).gapi.auth2
+        .getAuthInstance()
+        .signIn()
+        .then((u: any) => createPicker(u.getAuthResponse().access_token, developerKey));
   };
 
   const createPicker = (accessToken: string, developerKey: string) => {
-    const view = new (window as any).google.picker.View((window as any).google.picker.ViewId.DOCS);
-    const picker = new (window as any).google.picker.PickerBuilder()
+    const view = new (window as any).google.picker.View(
+      (window as any).google.picker.ViewId.DOCS
+    );
+    new (window as any).google.picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(accessToken)
       .setDeveloperKey(developerKey)
       .setCallback((data: any) => {
         if (data.action === (window as any).google.picker.Action.PICKED) {
           const doc = data.docs[0];
-          const newGdAtt: DraftAttachment = {
-            id: `gd-${Date.now()}`,
-            name: doc.name,
-            type: "file",
-            size: doc.sizeBytes || 0,
-            progress: 100,
-            status: "uploaded",
-            url: doc.url,
-            provider: "google-drive",
-            fileId: doc.id,
-          };
-          setDraftAttachments((prev) => [...prev, newGdAtt]);
+          setDraftAttachments((p) => [
+            ...p,
+            {
+              id: `gd-${Date.now()}`,
+              name: doc.name, type: "file", size: doc.sizeBytes || 0,
+              progress: 100, status: "uploaded", url: doc.url,
+              provider: "google-drive", fileId: doc.id,
+            },
+          ]);
           setGdModalOpen(false);
-          toast.success(`Picked: ${doc.name}`);
+          toast.success(`Attached: ${doc.name}`);
         }
       })
-      .build();
-    picker.setVisible(true);
+      .build()
+      .setVisible(true);
   };
 
-  const handleSend = () => {
-    const hasText = draft.trim();
-    const hasAttachments = draftAttachments.length > 0;
-    if (!hasText && !hasAttachments) return;
+  // ── Send handler ──────────────────────────────────────────────────────────
+  const handleSend = useCallback(() => {
+    if (isSendingRef.current || isSending) return;
 
-    // Check if any attachments are still uploading
-    const stillUploading = draftAttachments.some((att) => att.status === "uploading");
-    if (stillUploading) {
-      toast.error("Wait for files to finish uploading before sending.");
+    const hasText = draft.trim();
+    const hasAtts = draftAttachments.length > 0;
+    if (!hasText && !hasAtts) return;
+
+    if (draftAttachments.some((a) => a.status === "uploading")) {
+      toast.error("Please wait for uploads to finish.");
+      return;
+    }
+    if (draftAttachments.some((a) => a.status === "failed")) {
+      toast.error("Some attachments failed to upload. Remove them or retry.");
       return;
     }
 
-    const payloadAttachments = draftAttachments.map((att) => ({
-      url: att.url || "",
-      name: att.name,
-      type: att.type,
-      size: att.size,
-      storageProvider: att.provider,
-      storagePath: att.storagePath || "",
+    isSendingRef.current = true;
+
+    // ── Idempotency key ────────────────────────────────────────────────────
+    // One UUID per send action. Even if this POST is retried (network flap,
+    // Axios retry, React StrictMode double-invoke), the backend will return
+    // the existing message and never create a second DB record.
+    const clientMessageId = crypto.randomUUID();
+
+    const payloadAttachments = draftAttachments.map((a) => ({
+      url: a.url || "",
+      name: a.name,
+      type: a.type,
+      size: a.size,
+      storageProvider: a.provider,
+      storagePath: a.storagePath || "",
     }));
 
-    // Determine message primary type
     let messageType: "text" | "image" | "video" | "file" = "text";
     if (payloadAttachments.length === 1) {
-      const type = payloadAttachments[0].type;
-      if (type === "image" || type === "video" || type === "file") {
-        messageType = type;
-      }
+      const t = payloadAttachments[0].type as string;
+      if (t === "image" || t === "video" || t === "file") messageType = t;
     } else if (payloadAttachments.length > 1) {
       messageType = "file";
     }
 
-    const payload: any = {
-      content: draft.trim(),
-      text: draft.trim(),
-      messageType,
-      attachments: payloadAttachments,
-    };
-
-    const tempId = `temp-${Date.now()}`;
-    const tempMsg = {
-      _id: tempId,
-      sender: {
-        _id: currentUserId,
-        id: currentUserId,
-        name: user?.name || "Me",
-        avatar: user?.avatar,
-      },
-      senderId: currentUserId,
-      content: draft.trim(),
-      text: draft.trim(),
-      messageType,
-      attachments: payloadAttachments,
-      createdAt: new Date().toISOString(),
-      status: "sending",
-      recipientUserId: activeChat.recipientUserId,
-      channel: activeChat.id,
-    };
-
-    // Append to local pending list
-    setPendingMessages((prev) => [...prev, tempMsg]);
-
-    const activeDraft = draft;
-    const activeAtts = [...draftAttachments];
-
+    const content = draft.trim();
     setDraft("");
     setDraftAttachments([]);
 
+    const onError = (err: any) => {
+      const msg = err?.response?.data?.message || "Message could not be sent. Please try again.";
+      toast.error(msg);
+      setDraft(content); // restore on failure
+    };
+    const onSettled = () => { isSendingRef.current = false; };
+
     if (activeChat.type === "dm" && activeChat.recipientUserId) {
-      sendDirectMessage.mutate(payload, {
-        onError: (err: any) => {
-          setDraft(activeDraft);
-          setDraftAttachments(activeAtts);
-          setPendingMessages((prev) =>
-            prev.map((m) => (m._id === tempId ? { ...m, status: "failed" } : m))
-          );
-          toast.error(err.response?.data?.message || "Failed to send direct message");
-        },
-      });
+      sendDirectMessage.mutate(
+        { text: content, content, messageType, attachments: payloadAttachments, clientMessageId },
+        { onError, onSettled }
+      );
     } else {
       sendChannelMessage.mutate(
-        {
-          ...payload,
-          channel: activeChat.id,
-        },
-        {
-          onError: (err: any) => {
-            setDraft(activeDraft);
-            setDraftAttachments(activeAtts);
-            setPendingMessages((prev) =>
-              prev.map((m) => (m._id === tempId ? { ...m, status: "failed" } : m))
-            );
-            toast.error(err.response?.data?.message || "Failed to send channel message");
-          },
-        }
+        { content, text: content, channel: activeChat.id, messageType, attachments: payloadAttachments, clientMessageId },
+        { onError, onSettled }
       );
+    }
+  }, [draft, draftAttachments, activeChat, isSending, sendDirectMessage, sendChannelMessage]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
-  const handleRetry = (failedMsg: any) => {
-    // Remove from pending messages list
-    setPendingMessages((prev) => prev.filter((m) => m._id !== failedMsg._id));
-
-    // Reload into composer
-    setDraft(failedMsg.content || failedMsg.text || "");
-    const restoredAtts = failedMsg.attachments.map((att: any) => ({
-      id: `restore-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      name: att.name,
-      type: att.type,
-      size: att.size,
-      progress: 100,
-      status: "uploaded" as const,
-      url: att.url,
-      provider: att.storageProvider,
-      storagePath: att.storagePath,
-    }));
-    setDraftAttachments(restoredAtts);
-  };
-
+  // ── Announcements ─────────────────────────────────────────────────────────
   const handleCreateAnnouncement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annContent.trim()) {
       toast.error("Title and content are required.");
       return;
     }
-
     createAnnouncement.mutate(
       { title: annTitle, content: annContent, pinned: annPinned },
       {
         onSuccess: () => {
-          toast.success("Announcement published successfully!");
+          toast.success("Announcement published!");
           setAnnouncementModalOpen(false);
-          setAnnTitle("");
-          setAnnContent("");
-          setAnnPinned(false);
+          setAnnTitle(""); setAnnContent(""); setAnnPinned(false);
         },
-        onError: (err: any) => {
-          toast.error(err.response?.data?.message || "Failed to post announcement");
-        },
+        onError: (err: any) =>
+          toast.error(err.response?.data?.message || "Failed to post announcement."),
       }
     );
   };
 
-  const handleDeleteAnnouncement = (id: string) => {
+  const handleDeleteAnnouncement = (id: string) =>
     deleteAnnouncement.mutate(id, {
-      onSuccess: () => toast.success("Announcement deleted"),
-      onError: (err: any) => toast.error(err.response?.data?.message || "Failed to delete"),
+      onSuccess: () => toast.success("Deleted"),
+      onError: (err: any) => toast.error(err.response?.data?.message || "Failed to delete."),
     });
-  };
 
-  // Filtering user list by search bar
+  // ── Filter users ──────────────────────────────────────────────────────────
   const filteredUsers = (directUsers || [])
     .filter((u: any) => u._id !== currentUserId)
     .filter((u: any) => {
       if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
+      const t = searchTerm.toLowerCase();
       return (
-        u.name?.toLowerCase().includes(term) ||
-        u.email?.toLowerCase().includes(term) ||
-        (u.designation || u.role || "")?.toLowerCase().includes(term) ||
-        u.employeeId?.toLowerCase().includes(term)
+        u.name?.toLowerCase().includes(t) ||
+        u.email?.toLowerCase().includes(t) ||
+        (u.designation || u.role || "").toLowerCase().includes(t)
       );
     });
 
-  // Format file size
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <PageContainer>
       <PageHeader
         title="Communication & Workspace Chat"
-        subtitle="Group channels, 1-on-1 team messaging, and leadership announcements."
+        subtitle="Group channels, 1-on-1 messaging, and leadership announcements."
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_340px] gap-4 items-start">
-        {/* Left Column: Channels & Direct Messages */}
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-4 items-start">
+
+        {/* ── LEFT SIDEBAR ─────────────────────────────────────────── */}
         <div className="space-y-4">
+          {/* Channels */}
           <SectionCard title="Channels" description="Group conversations">
             <div className="space-y-1">
               <button
                 onClick={() =>
-                  setActiveChat({
-                    type: "channel",
-                    id: "general",
-                    name: "general",
-                  })
+                  setActiveChat({ type: "channel", id: "general", name: "general" })
                 }
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   activeChat.type === "channel" && activeChat.id === "general"
-                    ? "bg-primary/10 text-primary font-semibold"
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold shadow-sm"
                     : "text-muted-foreground hover:bg-card/80 hover:text-foreground"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <Hash className="h-4 w-4" />
-                  <span>everyone (general)</span>
-                </div>
+                <Hash className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left">everyone (general)</span>
                 <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
                   All
                 </Badge>
@@ -570,33 +636,37 @@ function CommunicationPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Direct Messages" description="Chat 1-on-1 with team members">
+          {/* Direct Messages */}
+          <SectionCard title="Direct Messages" description="1-on-1 with team members">
             <div className="space-y-2">
-              {/* Search Bar */}
-              <div className="relative mb-1">
+              <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search people..."
+                  placeholder="Search people…"
                   className="pl-9 h-9 text-xs rounded-xl border-border bg-card/50"
                 />
               </div>
 
-              <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-0.5 max-h-[380px] overflow-y-auto pr-1">
                 {isUsersLoading ? (
                   <div className="py-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Loading users...
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                    Loading users…
                   </div>
                 ) : filteredUsers.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-6 text-center">No team members found</p>
+                  <p className="text-xs text-muted-foreground py-6 text-center">
+                    {searchTerm ? "No users match your search" : "No team members found"}
+                  </p>
                 ) : (
                   filteredUsers.map((emp: any) => {
-                    const isSelected = activeChat.type === "dm" && activeChat.recipientUserId === emp._id;
+                    const isSelected =
+                      activeChat.type === "dm" && activeChat.recipientUserId === emp._id;
                     const hasUnread = emp.unreadCount > 0;
-                    
-                    // Simple online indicator check based on whether they have a lastMessage preview (active user)
-                    const isOnline = !!emp.lastMessageAt && (new Date().getTime() - new Date(emp.lastMessageAt).getTime() < 30 * 60 * 1000);
+                    const isOnline =
+                      !!emp.lastMessageAt &&
+                      Date.now() - new Date(emp.lastMessageAt).getTime() < 30 * 60 * 1000;
 
                     return (
                       <button
@@ -611,44 +681,42 @@ function CommunicationPage() {
                             designation: emp.designation || emp.role,
                           })
                         }
-                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-colors border border-transparent ${
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all border ${
                           isSelected
-                            ? "bg-primary/10 text-primary font-semibold border-primary/10"
-                            : "text-foreground hover:bg-card/80 hover:border-border"
+                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-semibold border-emerald-500/20"
+                            : "text-foreground hover:bg-card/80 border-transparent hover:border-border"
                         }`}
                       >
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={emp.avatar || ""} />
-                            <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                            <AvatarFallback className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-400">
                               {emp.name?.substring(0, 2).toUpperCase() || "U"}
                             </AvatarFallback>
                           </Avatar>
-                          {/* Online Indicator */}
                           {isOnline && (
                             <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
                           )}
                         </div>
-                        <div className="text-left truncate flex-1 min-w-0">
+                        <div className="text-left flex-1 min-w-0">
                           <div className="flex justify-between items-center gap-1">
                             <p className={`truncate ${hasUnread ? "font-bold text-foreground" : "font-medium"}`}>
                               {emp.name}
                             </p>
                             {emp.lastMessageAt && (
                               <span className="text-[9px] text-muted-foreground shrink-0 font-normal">
-                                {new Date(emp.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                {formatTime(emp.lastMessageAt)}
                               </span>
                             )}
                           </div>
-                          
                           <div className="flex items-center justify-between gap-1 mt-0.5">
                             <p className="text-[9px] text-muted-foreground truncate max-w-[75%]">
                               {emp.lastMessage || emp.designation || emp.role || "Team Member"}
                             </p>
                             {hasUnread && (
-                              <Badge className="bg-primary text-primary-foreground text-[9px] h-4.5 min-w-4.5 px-1 flex items-center justify-center rounded-full shrink-0 font-bold">
+                              <span className="bg-emerald-500 text-white text-[9px] min-w-4 h-4 px-1 flex items-center justify-center rounded-full shrink-0 font-bold">
                                 {emp.unreadCount}
-                              </Badge>
+                              </span>
                             )}
                           </div>
                         </div>
@@ -661,313 +729,505 @@ function CommunicationPage() {
           </SectionCard>
         </div>
 
-        {/* Middle Column: Chat Window */}
+        {/* ── MIDDLE: CHAT WINDOW ──────────────────────────────────── */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className="relative"
+          className={`relative rounded-2xl border shadow-sm flex flex-col overflow-hidden bg-card transition-colors ${
+            isDragOver ? "border-emerald-500 bg-emerald-500/5" : "border-border"
+          }`}
+          style={{ height: "calc(100vh - 200px)", minHeight: "520px" }}
         >
-          <SectionCard
-            title={
-              activeChat.type === "channel" ? (
-                <div className="flex items-center gap-2">
-                  <Hash className="h-5 w-5 text-primary" />
-                  <span>#{activeChat.name}</span>
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-2 z-50 pointer-events-none rounded-2xl border-2 border-dashed border-emerald-500 m-1">
+              <Paperclip className="h-10 w-10 text-emerald-500 animate-bounce" />
+              <p className="font-semibold text-sm text-emerald-700">Drop files to attach</p>
+              <p className="text-xs text-muted-foreground">Images, videos, documents up to 50 MB</p>
+            </div>
+          )}
+
+          {/* ── Chat header ── */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm shrink-0">
+            {activeChat.type === "channel" ? (
+              <>
+                <div className="h-9 w-9 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                  <Hash className="h-5 w-5 text-emerald-600" />
                 </div>
-              ) : (
-                <div className="flex items-center gap-2.5">
-                  <Avatar className="h-8 w-8">
+                <div>
+                  <p className="text-sm font-semibold leading-tight">#everyone (general)</p>
+                  <p className="text-[10px] text-muted-foreground">All organization members</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="relative shrink-0">
+                  <Avatar className="h-9 w-9">
                     <AvatarImage src={activeChat.avatar || ""} />
-                    <AvatarFallback className="text-xs bg-primary/20 text-primary">
+                    <AvatarFallback className="text-xs bg-emerald-500/20 text-emerald-700">
                       {activeChat.name.substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="text-sm font-semibold leading-tight">{activeChat.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                      {activeChat.designation || "Direct Message"}
-                    </p>
-                  </div>
+                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background" />
                 </div>
-              )
-            }
-            description={
-              activeChat.type === "channel"
-                ? "General channel for all organization members"
-                : "Private direct message"
-            }
-            className={`flex flex-col h-[580px] relative transition-colors ${
-              isDragOver ? "bg-primary/5 border-primary" : ""
-            }`}
-          >
-            {/* Drag & Drop Overlay */}
-            {isDragOver && (
-              <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-2 z-50 pointer-events-none rounded-2xl border-2 border-dashed border-primary m-1">
-                <Globe className="h-10 w-10 text-primary animate-bounce" />
-                <p className="font-semibold text-sm">Drop your files here</p>
-                <p className="text-xs text-muted-foreground">Send images, videos, or documents directly</p>
-              </div>
-            )}
-
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-2">
-              {isMessagesLoading ? (
-                <div className="py-16 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <span>Loading messages...</span>
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center gap-2">
-                  <MessageSquare className="h-10 w-10 text-muted-foreground opacity-30" />
-                  <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
-                  <p className="text-xs text-muted-foreground opacity-70">
-                    {activeChat.type === "channel"
-                      ? "Start the conversation with everyone in #general"
-                      : `Send a direct message to ${activeChat.name}.`}
+                <div>
+                  <p className="text-sm font-semibold leading-tight">{activeChat.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {activeChat.designation || "Direct Message"} &nbsp;·&nbsp;
+                    <span className="text-emerald-500">● Online</span>
                   </p>
                 </div>
-              ) : (
-                messages.map((msg: any) => {
-                  const isMe = msg.sender?._id === currentUserId || msg.sender?.id === currentUserId || msg.senderId === currentUserId;
-                  const isSending = msg.status === "sending";
-                  const isFailed = msg.status === "failed";
+              </>
+            )}
+          </div>
 
-                  return (
-                    <div
-                      key={msg._id}
-                      className={`flex items-start gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
-                    >
-                      <Avatar className="h-7 w-7 mt-0.5 shrink-0">
-                        <AvatarImage src={msg.sender?.avatar || ""} />
-                        <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                          {msg.sender?.name?.substring(0, 2).toUpperCase() || "U"}
+          {/* ── Messages scroll container ── */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScrollEvent}
+            className="flex-1 overflow-y-auto px-4 py-4 space-y-2"
+          >
+            {isMessagesLoading ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
+                <span className="text-xs">Loading messages…</span>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                <div className="h-16 w-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                  <MessageSquare className="h-8 w-8 text-emerald-500 opacity-50" />
+                </div>
+                <p className="text-sm font-semibold text-foreground">No messages yet</p>
+                <p className="text-xs text-muted-foreground max-w-48">
+                  {activeChat.type === "channel"
+                    ? "Be the first to send a message to #general"
+                    : `Start a conversation with ${activeChat.name}`}
+                </p>
+              </div>
+            ) : (
+              messages.map((msg: any) => {
+                // Determine sender — handle both populated obj and raw ID
+                const senderId =
+                  msg.sender?._id || msg.sender?.id || msg.senderId?._id || msg.senderId;
+                const isMe = senderId === currentUserId;
+                const isRead = !!msg.readAt;
+                const senderName = msg.sender?.name || msg.senderId?.name || "Member";
+                const senderAvatar = msg.sender?.avatar || msg.senderId?.avatar || "";
+
+                return (
+                  <div
+                    key={msg._id}
+                    className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                  >
+                    {/* Avatar – received only */}
+                    {!isMe && (
+                      <Avatar className="h-7 w-7 shrink-0 mb-1">
+                        <AvatarImage src={senderAvatar} />
+                        <AvatarFallback className="text-[10px] bg-emerald-500/20 text-emerald-700">
+                          {senderName.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
+                    )}
 
-                      <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end text-right" : "items-start text-left"}`}>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground px-1">
-                          <span className="font-semibold text-foreground">{isMe ? "You" : msg.sender?.name || "Member"}</span>
-                          <span>•</span>
-                          <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                          {isSending && <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />}
-                          {isFailed && <Badge variant="destructive" className="text-[8px] h-4.5 px-1.5 flex items-center gap-1 select-none">
-                            <AlertCircle className="h-2.5 w-2.5" /> Failed
-                          </Badge>}
-                        </div>
+                    <div
+                      className={`max-w-[72%] flex flex-col ${
+                        isMe ? "items-end" : "items-start"
+                      }`}
+                    >
+                      {/* Sender name in General channel (received only) */}
+                      {!isMe && activeChat.type === "channel" && (
+                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 px-1 mb-0.5">
+                          {senderName}
+                        </span>
+                      )}
 
-                        <div className="space-y-2">
-                          {/* Text content bubble */}
-                          {(msg.content || msg.text) && (
-                            <div
-                              className={`p-3 rounded-2xl text-xs leading-relaxed ${
-                                isMe
-                                  ? "bg-primary text-primary-foreground rounded-tr-none shadow-sm"
-                                  : "bg-card border border-border text-foreground rounded-tl-none shadow-sm"
+                      {/* Text bubble */}
+                      {(msg.content || msg.text) && (
+                        <div
+                          className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                            isMe
+                              ? "rounded-br-sm text-white"
+                              : "rounded-bl-sm bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40 text-foreground"
+                          }`}
+                          style={
+                            isMe
+                              ? { background: "linear-gradient(135deg,#059669 0%,#065f46 100%)" }
+                              : undefined
+                          }
+                        >
+                          <p className="whitespace-pre-wrap break-words">
+                            {msg.content || msg.text}
+                          </p>
+                          {/* Timestamp + tick */}
+                          <div
+                            className={`flex items-center gap-1 mt-1 ${
+                              isMe ? "justify-end" : "justify-start"
+                            }`}
+                          >
+                            <span
+                              className={`text-[10px] ${
+                                isMe ? "text-emerald-200" : "text-muted-foreground"
                               }`}
                             >
-                              {msg.content || msg.text}
-                            </div>
-                          )}
-
-                          {/* Attachments rendering */}
-                          {msg.attachments && msg.attachments.length > 0 && (
-                            <div className="space-y-1.5 mt-1">
-                              {msg.attachments.map((att: any, idx: number) => {
-                                const isImg = att.type === "image" || att.name.match(/\.(jpg|jpeg|png|webp|gif)$/i);
-                                const isVid = att.type === "video" || att.name.match(/\.(mp4|webm|mov)$/i);
-                                const isGd = att.storageProvider === "google-drive";
-
-                                if (isImg) {
-                                  return (
-                                    <div key={idx} className="relative group max-w-sm rounded-xl overflow-hidden border border-border bg-card shadow-sm">
-                                      <img src={att.url} alt={att.name} className="max-h-48 object-cover w-full" />
-                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors">
-                                          <Eye className="h-4 w-4" />
-                                        </a>
-                                        <a href={att.url} download={att.name} className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors">
-                                          <Download className="h-4 w-4" />
-                                        </a>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                if (isVid) {
-                                  return (
-                                    <div key={idx} className="max-w-md rounded-xl overflow-hidden border border-border bg-card shadow-sm">
-                                      <video controls src={att.url} className="w-full max-h-56 object-contain bg-black" />
-                                    </div>
-                                  );
-                                }
-
-                                // Document or Google Drive card
-                                return (
-                                  <a
-                                    key={idx}
-                                    href={att.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs shadow-sm max-w-sm transition-all text-left ${
-                                      isMe
-                                        ? "bg-primary/5 hover:bg-primary/10 border-primary/20 text-foreground"
-                                        : "bg-card hover:bg-card/80 border-border"
-                                    }`}
-                                  >
-                                    <div className={`p-2 rounded-lg ${isGd ? "bg-emerald-500/10 text-emerald-500" : "bg-primary/10 text-primary"}`}>
-                                      {isGd ? <Globe className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-                                    </div>
-                                    <div className="truncate flex-1 min-w-0">
-                                      <p className="font-semibold truncate">{att.name}</p>
-                                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                                        {isGd ? "Google Drive Document" : formatBytes(att.size)}
-                                      </p>
-                                    </div>
-                                    {isGd ? <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Retry action for failed messages */}
-                        {isFailed && (
-                          <button
-                            onClick={() => handleRetry(msg)}
-                            className="flex items-center gap-1 text-[10px] text-primary hover:underline font-semibold mt-1"
-                          >
-                            <RefreshCw className="h-3 w-3" /> Retry Message
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Previews of draft attachments */}
-            {draftAttachments.length > 0 && (
-              <div className="p-2 border-t border-border bg-card/60 backdrop-blur-sm rounded-xl mb-2 flex flex-wrap gap-2 max-h-24 overflow-y-auto">
-                {draftAttachments.map((att) => {
-                  const isUploading = att.status === "uploading";
-                  const isFailed = att.status === "failed";
-                  return (
-                    <div
-                      key={att.id}
-                      className="flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-border bg-card text-[11px] shadow-sm relative group max-w-[200px]"
-                    >
-                      <div className="p-1 rounded bg-primary/10 text-primary shrink-0">
-                        {att.provider === "google-drive" ? (
-                          <Globe className="h-3.5 w-3.5" />
-                        ) : att.type === "image" ? (
-                          <Image className="h-3.5 w-3.5" />
-                        ) : att.type === "video" ? (
-                          <Video className="h-3.5 w-3.5" />
-                        ) : (
-                          <Paperclip className="h-3.5 w-3.5" />
-                        )}
-                      </div>
-
-                      <div className="truncate flex-1 min-w-0 pr-2">
-                        <p className="font-medium truncate">{att.name}</p>
-                        {isUploading ? (
-                          <div className="w-full bg-secondary h-1.5 rounded-full mt-1 overflow-hidden">
-                            <div
-                              className="bg-primary h-full transition-all duration-300"
-                              style={{ width: `${att.progress}%` }}
-                            />
+                              {formatTime(msg.createdAt)}
+                            </span>
+                            {isMe &&
+                              (isRead ? (
+                                <CheckCheck className="h-3 w-3 text-emerald-200" />
+                              ) : (
+                                <Check className="h-3 w-3 text-emerald-200" />
+                              ))}
                           </div>
-                        ) : isFailed ? (
-                          <span className="text-[9px] text-destructive font-semibold">Upload failed</span>
-                        ) : (
-                          <span className="text-[9px] text-muted-foreground">Ready</span>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
-                      <button
-                        onClick={() => removeDraftAttachment(att.id)}
-                        className="absolute -top-1.5 -right-1.5 h-4 w-4 bg-muted hover:bg-destructive rounded-full border border-border text-foreground hover:text-white flex items-center justify-center transition-colors"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
+                      {/* Attachments */}
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="space-y-1.5 mt-1 w-full">
+                          {msg.attachments.map((att: any, idx: number) => {
+                            const isImg =
+                              att.type === "image" ||
+                              /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(att.name);
+                            const isVid =
+                              att.type === "video" ||
+                              /\.(mp4|webm|mov|avi|mpeg)$/i.test(att.name);
+                            const isGd = att.storageProvider === "google-drive";
+                            const fullUrl = getFileUrl(att.url);
+
+                            if (isImg)
+                              return (
+                                <div
+                                  key={idx}
+                                  className="relative group max-w-xs rounded-2xl overflow-hidden border border-emerald-200/40 shadow-sm"
+                                >
+                                  <img
+                                    src={fullUrl}
+                                    alt={att.name}
+                                    className="max-h-52 object-cover w-full"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <a
+                                      href={fullUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </a>
+                                    <a
+                                      href={fullUrl}
+                                      download={att.name}
+                                      className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white"
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </a>
+                                  </div>
+                                </div>
+                              );
+
+                            if (isVid)
+                              return (
+                                <div
+                                  key={idx}
+                                  className="max-w-sm rounded-2xl overflow-hidden border border-border shadow-sm"
+                                >
+                                  <video
+                                    controls
+                                    src={fullUrl}
+                                    className="w-full max-h-52 object-contain bg-black"
+                                  />
+                                </div>
+                              );
+
+                            // Document / Google Drive card
+                            return (
+                              <a
+                                key={idx}
+                                href={fullUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2.5 p-3 rounded-2xl border text-xs shadow-sm max-w-xs transition-all ${
+                                  isMe
+                                    ? "bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/30 text-foreground"
+                                    : "bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100/60 border-emerald-200/40"
+                                }`}
+                              >
+                                <div
+                                  className={`p-2 rounded-xl ${
+                                    isGd
+                                      ? "bg-blue-500/10 text-blue-500"
+                                      : "bg-emerald-500/10 text-emerald-600"
+                                  }`}
+                                >
+                                  {isGd ? (
+                                    <Globe className="h-5 w-5" />
+                                  ) : (
+                                    <FileText className="h-5 w-5" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold truncate">{att.name}</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    {isGd ? "Google Drive" : formatBytes(att.size)}
+                                  </p>
+                                </div>
+                                {isGd ? (
+                                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                )}
+                              </a>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })
             )}
+            {/* Scroll anchor */}
+            <div id="chat-bottom-anchor" />
+          </div>
 
-            {/* Input Area */}
-            <div className="pt-3 border-t border-border flex items-center gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files) {
-                    handleFilesUpload(Array.from(e.target.files));
-                  }
-                }}
-              />
+          {/* ── New messages banner ── */}
+          <AnimatePresence>
+            {showNewMessages && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                className="absolute bottom-[130px] left-1/2 -translate-x-1/2 z-20"
+              >
+                <button
+                  onClick={() => { scrollToBottom(); setShowNewMessages(false); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  New messages
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Attachment Plus Options Button */}
-              <div className="flex shrink-0">
+          {/* ── Draft attachment previews ── */}
+          {draftAttachments.length > 0 && (
+            <div className="px-4 py-2 border-t border-border bg-card/60 backdrop-blur-sm flex flex-wrap gap-2 max-h-20 overflow-y-auto shrink-0">
+              {draftAttachments.map((att) => (
+                <div
+                  key={att.id}
+                  className={`flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border text-[11px] shadow-sm relative group max-w-[200px] ${
+                    att.status === "failed"
+                      ? "border-destructive/50 bg-destructive/5"
+                      : "border-border bg-card"
+                  }`}
+                >
+                  <div
+                    className={`p-1 rounded-lg shrink-0 ${
+                      att.status === "failed"
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-emerald-500/10 text-emerald-600"
+                    }`}
+                  >
+                    {att.provider === "google-drive" ? (
+                      <Globe className="h-3.5 w-3.5" />
+                    ) : att.type === "image" ? (
+                      <Image className="h-3.5 w-3.5" />
+                    ) : att.type === "video" ? (
+                      <Video className="h-3.5 w-3.5" />
+                    ) : att.status === "failed" ? (
+                      <AlertCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <Paperclip className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <div className="truncate flex-1 min-w-0 pr-2">
+                    <p className="font-medium truncate">{att.name}</p>
+                    {att.status === "uploading" ? (
+                      <div className="w-full bg-secondary h-1 rounded-full mt-0.5 overflow-hidden">
+                        <div
+                          className="bg-emerald-500 h-full transition-all duration-300"
+                          style={{ width: `${att.progress}%` }}
+                        />
+                      </div>
+                    ) : att.status === "failed" ? (
+                      <span className="text-[9px] text-destructive font-semibold">
+                        Upload failed
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-emerald-600 font-medium">
+                        Ready ✓
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeDraftAttachment(att.id)}
+                    className="absolute -top-1.5 -right-1.5 h-4 w-4 bg-muted hover:bg-destructive rounded-full border border-border text-foreground hover:text-white flex items-center justify-center transition-colors"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Composer ── */}
+          <div className="px-4 py-3 border-t border-border bg-card/80 backdrop-blur-sm shrink-0">
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) handleFilesUpload(Array.from(e.target.files));
+                e.target.value = ""; // allow same file re-select
+              }}
+            />
+
+            <div className="flex items-end gap-2">
+              {/* Attach button */}
+              <div className="relative shrink-0" ref={attachMenuRef}>
                 <Button
+                  type="button"
                   size="icon"
                   variant="outline"
-                  className="rounded-xl h-11 w-11 border-border text-muted-foreground hover:text-foreground shrink-0 relative group"
+                  onClick={() => setShowAttachMenu((p) => !p)}
+                  className="rounded-xl h-10 w-10 border-border text-muted-foreground hover:text-emerald-600 hover:border-emerald-500/40"
                 >
                   <Plus className="h-5 w-5" />
-                  <div className="absolute bottom-12 left-0 hidden group-hover:flex flex-col bg-card border border-border rounded-xl shadow-lg p-1.5 w-44 z-50 text-left space-y-1">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-primary/10 rounded-lg text-xs font-semibold text-foreground text-left w-full"
-                    >
-                      <Paperclip className="h-4 w-4 text-primary" /> Upload from Computer
-                    </button>
-                    <button
-                      onClick={() => setGdModalOpen(true)}
-                      className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-primary/10 rounded-lg text-xs font-semibold text-foreground text-left w-full"
-                    >
-                      <Globe className="h-4 w-4 text-emerald-500" /> Google Drive Link
-                    </button>
-                  </div>
                 </Button>
+
+                <AnimatePresence>
+                  {showAttachMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                      transition={{ duration: 0.12 }}
+                      className="absolute bottom-12 left-0 bg-card border border-border rounded-2xl shadow-xl p-2 w-52 z-50 space-y-0.5"
+                    >
+                      <button
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = "image/*";
+                          }
+                          fileInputRef.current?.click();
+                          setShowAttachMenu(false);
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-emerald-500/10 rounded-xl text-xs font-semibold text-foreground w-full transition-colors"
+                      >
+                        <Image className="h-4 w-4 text-emerald-500" /> Photo / Image
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = "video/*";
+                          }
+                          fileInputRef.current?.click();
+                          setShowAttachMenu(false);
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-emerald-500/10 rounded-xl text-xs font-semibold text-foreground w-full transition-colors"
+                      >
+                        <Video className="h-4 w-4 text-blue-500" /> Video
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept =
+                              "application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip";
+                          }
+                          fileInputRef.current?.click();
+                          setShowAttachMenu(false);
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-emerald-500/10 rounded-xl text-xs font-semibold text-foreground w-full transition-colors"
+                      >
+                        <FileText className="h-4 w-4 text-amber-500" /> Document / File
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = "*/*";
+                          }
+                          fileInputRef.current?.click();
+                          setShowAttachMenu(false);
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-emerald-500/10 rounded-xl text-xs font-semibold text-foreground w-full transition-colors"
+                      >
+                        <Paperclip className="h-4 w-4 text-muted-foreground" /> Other File
+                      </button>
+                      <div className="my-1 border-t border-border" />
+                      <button
+                        onClick={() => {
+                          setGdModalOpen(true);
+                          setShowAttachMenu(false);
+                        }}
+                        className="flex items-center gap-2.5 px-3 py-2 hover:bg-emerald-500/10 rounded-xl text-xs font-semibold text-foreground w-full transition-colors"
+                      >
+                        <Globe className="h-4 w-4 text-blue-400" /> Google Drive
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              <Input
+              {/* Message textarea */}
+              <Textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
+                onKeyDown={handleKeyDown}
                 placeholder={
                   activeChat.type === "channel"
-                    ? "Message #everyone (general)..."
-                    : `Message ${activeChat.name}...`
+                    ? "Message #everyone (general)…"
+                    : `Message ${activeChat.name}…`
                 }
-                className="rounded-xl h-11 border-border focus-visible:ring-primary flex-1 min-w-0"
+                rows={1}
+                className="rounded-xl border-border focus-visible:ring-emerald-500 flex-1 min-w-0 resize-none min-h-10 max-h-32 py-2.5 text-sm leading-snug overflow-y-auto"
+                style={{ fieldSizing: "content" } as any}
               />
+
+              {/* Send button */}
               <Button
+                type="button"
                 onClick={handleSend}
-                disabled={!draft.trim() && draftAttachments.length === 0}
-                className="rounded-xl gradient-royal text-white gap-1.5 px-4 h-11 shrink-0"
+                disabled={
+                  isSending ||
+                  (!draft.trim() && draftAttachments.length === 0) ||
+                  draftAttachments.some((a) => a.status === "uploading")
+                }
+                className="rounded-xl h-10 w-10 p-0 shrink-0 text-white shadow-sm transition-all disabled:opacity-40"
+                style={
+                  isSending ||
+                  (!draft.trim() && draftAttachments.length === 0) ||
+                  draftAttachments.some((a) => a.status === "uploading")
+                    ? undefined
+                    : {
+                        background:
+                          "linear-gradient(135deg,#059669 0%,#065f46 100%)",
+                      }
+                }
               >
-                <Send className="h-4 w-4" />
-                <span>Send</span>
+                {isSending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
-          </SectionCard>
+
+            <p className="text-[10px] text-muted-foreground mt-1.5 pl-12">
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[9px] font-mono">Enter</kbd> send
+              &nbsp;·&nbsp;
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[9px] font-mono">
+                Shift+Enter
+              </kbd>{" "}
+              new line
+            </p>
+          </div>
         </div>
 
-        {/* Right Column: Announcements & Notifications */}
+        {/* ── RIGHT: Announcements & Notifications ─────────────────── */}
         <div className="space-y-4">
           <SectionCard
             title={
@@ -980,7 +1240,10 @@ function CommunicationPage() {
                   <Button
                     size="sm"
                     onClick={() => setAnnouncementModalOpen(true)}
-                    className="h-7 text-xs rounded-lg gradient-royal text-white gap-1 px-2.5"
+                    className="h-7 text-xs rounded-lg gap-1 px-2.5 text-white"
+                    style={{
+                      background: "linear-gradient(135deg,#059669 0%,#065f46 100%)",
+                    }}
                   >
                     <Plus className="h-3.5 w-3.5" /> Post
                   </Button>
@@ -990,14 +1253,18 @@ function CommunicationPage() {
             description="Updates from leadership"
           >
             {isAnnouncementsLoading ? (
-              <p className="text-xs text-muted-foreground py-6 text-center">Loading announcements...</p>
+              <p className="text-xs text-muted-foreground py-6 text-center">
+                Loading…
+              </p>
             ) : !announcements || announcements.length === 0 ? (
               <div className="py-8 text-center space-y-1">
                 <Megaphone className="h-8 w-8 text-muted-foreground opacity-30 mx-auto" />
-                <p className="text-xs text-muted-foreground font-medium">No announcements yet</p>
+                <p className="text-xs text-muted-foreground font-medium">
+                  No announcements yet
+                </p>
                 {canPostAnnouncement && (
                   <p className="text-[11px] text-muted-foreground opacity-70">
-                    Click "+ Post" above to broadcast an update to the team.
+                    Click "+ Post" to broadcast.
                   </p>
                 )}
               </div>
@@ -1011,11 +1278,15 @@ function CommunicationPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1.5">
-                          {ann.pinned && <Pin className="h-3 w-3 text-amber-500 fill-amber-500" />}
-                          <h4 className="text-xs font-semibold text-foreground leading-snug">{ann.title}</h4>
+                          {ann.pinned && (
+                            <Pin className="h-3 w-3 text-amber-500 fill-amber-500" />
+                          )}
+                          <h4 className="text-xs font-semibold text-foreground leading-snug">
+                            {ann.title}
+                          </h4>
                         </div>
                         <p className="text-[10px] text-muted-foreground">
-                          By {ann.author?.name || "Leadership"} •{" "}
+                          By {ann.author?.name || "Leadership"} ·{" "}
                           {new Date(ann.createdAt).toLocaleDateString(undefined, {
                             month: "short",
                             day: "numeric",
@@ -1044,28 +1315,34 @@ function CommunicationPage() {
 
           <SectionCard title="Notifications" description="Recent alerts">
             {isNotifsLoading ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">Loading notifications...</div>
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                Loading…
+              </div>
             ) : !notifications || notifications.length === 0 ? (
               <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground text-xs">
                 <Bell className="h-4 w-4" />
                 <span>No new notifications</span>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                 {notifications.map((n: any) => (
                   <div
                     key={n._id}
                     className="p-2.5 rounded-xl bg-card border border-border text-xs flex items-center justify-between gap-2"
                   >
                     <div>
-                      <p className="font-semibold text-foreground text-[11px]">{n.title}</p>
-                      <p className="text-muted-foreground text-[10px] leading-tight">{n.message}</p>
+                      <p className="font-semibold text-foreground text-[11px]">
+                        {n.title}
+                      </p>
+                      <p className="text-muted-foreground text-[10px] leading-tight">
+                        {n.message}
+                      </p>
                     </div>
                     {!n.isRead && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-[10px] text-primary h-6 px-2 shrink-0"
+                        className="text-[10px] text-emerald-600 h-6 px-2 shrink-0"
                         onClick={() => markNotifRead.mutate(n._id)}
                       >
                         Read
@@ -1079,36 +1356,38 @@ function CommunicationPage() {
         </div>
       </div>
 
-      {/* Dialog for Google Drive File Attachments (Includes OAuth Picker trigger + URL input fallback) */}
+      {/* ── Google Drive Modal ── */}
       <Dialog open={gdModalOpen} onOpenChange={setGdModalOpen}>
         <DialogContent className="sm:max-w-[480px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Globe className="h-5 w-5 text-emerald-500" />
-              <span>Attach Google Drive File</span>
+              <Globe className="h-5 w-5 text-blue-500" />
+              Attach Google Drive File
             </DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4 pt-2">
             <div className="p-3 bg-secondary/30 rounded-xl space-y-2">
               <p className="text-xs text-muted-foreground leading-normal">
-                Attach documents from Google Drive. If OAuth picker credentials are set, you can connect directly. Otherwise, paste a shared folder or document link below.
+                Connect your Google account to pick files directly, or paste a sharing
+                link below.
               </p>
-              
               <Button
                 type="button"
                 onClick={handleGooglePickerOpen}
                 variant="outline"
-                className="w-full text-xs gap-2 rounded-xl mt-1 h-9 border-border"
+                className="w-full text-xs gap-2 rounded-xl h-9 border-border"
               >
-                <Globe className="h-4 w-4 text-emerald-500" /> Connect Google Account & Pick File
+                <Globe className="h-4 w-4 text-blue-500" />
+                Connect Google Account & Pick File
               </Button>
             </div>
 
             <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-border"></div>
-              <span className="flex-shrink mx-4 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">or paste link manually</span>
-              <div className="flex-grow border-t border-border"></div>
+              <div className="flex-grow border-t border-border" />
+              <span className="flex-shrink mx-4 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                or paste link
+              </span>
+              <div className="flex-grow border-t border-border" />
             </div>
 
             <form onSubmit={handleAddGoogleDriveLink} className="space-y-4">
@@ -1125,10 +1404,9 @@ function CommunicationPage() {
                   required
                 />
               </div>
-
               <div>
                 <label htmlFor="gdName" className="text-xs font-semibold text-foreground">
-                  File Name / Description (Optional)
+                  File Name (Optional)
                 </label>
                 <Input
                   id="gdName"
@@ -1138,7 +1416,6 @@ function CommunicationPage() {
                   className="mt-1 rounded-xl text-xs h-10 border-border"
                 />
               </div>
-
               <DialogFooter className="pt-2">
                 <Button
                   type="button"
@@ -1150,7 +1427,10 @@ function CommunicationPage() {
                 </Button>
                 <Button
                   type="submit"
-                  className="rounded-xl gradient-royal text-white text-xs gap-1.5 px-4 h-10"
+                  className="rounded-xl text-white text-xs gap-1.5 px-4 h-10"
+                  style={{
+                    background: "linear-gradient(135deg,#059669 0%,#065f46 100%)",
+                  }}
                 >
                   <Plus className="h-4 w-4" /> Attach File
                 </Button>
@@ -1160,16 +1440,15 @@ function CommunicationPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog for Posting Announcements */}
+      {/* ── Announcement Modal ── */}
       <Dialog open={announcementModalOpen} onOpenChange={setAnnouncementModalOpen}>
         <DialogContent className="sm:max-w-[480px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              <span>Broadcast Announcement</span>
+              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+              Broadcast Announcement
             </DialogTitle>
           </DialogHeader>
-
           <form onSubmit={handleCreateAnnouncement} className="space-y-4 pt-2">
             <div>
               <label htmlFor="annTitle" className="text-xs font-semibold text-foreground">
@@ -1179,40 +1458,40 @@ function CommunicationPage() {
                 id="annTitle"
                 value={annTitle}
                 onChange={(e) => setAnnTitle(e.target.value)}
-                placeholder="e.g. Q3 Company Meeting & Product Roadmap Update"
+                placeholder="e.g. Q3 Company Meeting & Product Roadmap"
                 className="mt-1 rounded-xl h-10 border-border"
                 required
               />
             </div>
-
             <div>
               <label htmlFor="annContent" className="text-xs font-semibold text-foreground">
-                Announcement Message
+                Message
               </label>
               <Textarea
                 id="annContent"
                 value={annContent}
                 onChange={(e) => setAnnContent(e.target.value)}
-                placeholder="Write the announcement details to be broadcasted to all team members..."
+                placeholder="Write the announcement details…"
                 rows={4}
                 className="mt-1 rounded-xl text-xs border-border"
                 required
               />
             </div>
-
             <div className="flex items-center gap-2 pt-1">
               <input
                 type="checkbox"
                 id="annPinned"
                 checked={annPinned}
                 onChange={(e) => setAnnPinned(e.target.checked)}
-                className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                className="rounded border-border text-emerald-600 focus:ring-emerald-500 h-4 w-4"
               />
-              <label htmlFor="annPinned" className="text-xs text-muted-foreground select-none cursor-pointer">
+              <label
+                htmlFor="annPinned"
+                className="text-xs text-muted-foreground select-none cursor-pointer"
+              >
                 Pin to top of Announcements
               </label>
             </div>
-
             <DialogFooter className="pt-3">
               <Button
                 type="button"
@@ -1225,7 +1504,10 @@ function CommunicationPage() {
               <Button
                 type="submit"
                 disabled={createAnnouncement.isPending}
-                className="rounded-xl gradient-royal text-white text-xs gap-1 px-4 h-10"
+                className="rounded-xl text-white text-xs gap-1 px-4 h-10"
+                style={{
+                  background: "linear-gradient(135deg,#059669 0%,#065f46 100%)",
+                }}
               >
                 <Megaphone className="h-3.5 w-3.5" /> Publish Announcement
               </Button>

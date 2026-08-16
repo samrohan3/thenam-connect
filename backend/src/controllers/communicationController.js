@@ -3,6 +3,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/apiResponse');
+const { emitToUser } = require('../services/socketService');
 
 // @desc    Get users available for 1-to-1 communication with last message previews and unread counts
 // @route   GET /api/communication/direct-users
@@ -100,7 +101,20 @@ const getOrCreateDirectConversation = asyncHandler(async (req, res) => {
 const sendDirectMessage = asyncHandler(async (req, res) => {
   const currentUserId = req.user._id;
   const { userId } = req.params;
-  const { text, messageType = 'text', attachments = [] } = req.body;
+  const { text, messageType = 'text', attachments = [], clientMessageId } = req.body;
+
+  // ── Idempotency: if clientMessageId already exists, return the existing message ──
+  if (clientMessageId) {
+    const existing = await Message.findOne({ clientMessageId })
+      .populate('senderId', 'name email avatar roles role')
+      .populate('sender', 'name email avatar roles role')
+      .populate('receiverId', 'name email avatar roles role')
+      .populate('recipient', 'name email avatar roles role')
+      .lean();
+    if (existing) {
+      return res.status(200).json({ success: true, data: existing, message: 'Message already exists' });
+    }
+  }
 
   const conversationKey = [currentUserId.toString(), userId.toString()].sort().join('_');
   let conversation = await Conversation.findOne({ conversationKey });
@@ -135,7 +149,8 @@ const sendDirectMessage = asyncHandler(async (req, res) => {
     messageType,
     text,
     content: text, // compatibility
-    attachments
+    attachments,
+    clientMessageId: clientMessageId || null
   });
 
   // Update conversation last activity
@@ -149,6 +164,17 @@ const sendDirectMessage = asyncHandler(async (req, res) => {
     .populate('receiverId', 'name email avatar roles role')
     .populate('recipient', 'name email avatar roles role')
     .lean();
+
+  // ── Realtime: notify the recipient of the new direct message ──────────────
+  // Emit to sender's room so multiple tabs work, and to receiver's room
+  emitToUser(String(currentUserId), 'dm:new', {
+    ...populatedMessage,
+    _conversationUserId: userId
+  });
+  emitToUser(String(userId), 'dm:new', {
+    ...populatedMessage,
+    _conversationUserId: String(currentUserId)
+  });
 
   return res.status(201).json({
     success: true,
