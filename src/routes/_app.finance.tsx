@@ -18,8 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds, useVentures } from "@/lib/api-hooks";
+import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds, useVentures, useUpdateTransaction } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
+import { InvoicePreviewModal } from "@/components/finance/InvoicePreviewModal";
 import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
 import { AccessDenied } from "@/components/rbac/AccessDenied";
 import { RoleGuard } from "@/components/rbac/RoleGuard";
@@ -52,6 +53,64 @@ function FinancePage() {
   const [revenueOpen, setRevenueOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+
+  // Preview & Edit states
+  const [selectedPreviewTx, setSelectedPreviewTx] = useState<any>(null);
+  const [editingTx, setEditingTx] = useState<any>(null);
+  const updateTxMutation = useUpdateTransaction();
+
+  // Reset helper functions
+  const resetRevenueForm = () => {
+    setRevVenture("");
+    setRevAmount("");
+    setRevCategory("Client Payment");
+    setRevReason("");
+    setRevMethod("Bank Transfer");
+    setRevDesc("");
+    setRevClientName("");
+    setRevProof("");
+    setRevProofImage("");
+  };
+
+  const resetExpenseForm = () => {
+    setExpVenture("");
+    setExpAmount("");
+    setExpCategory("Operating Expense");
+    setExpReason("");
+    setExpMethod("Bank Transfer");
+    setExpDesc("");
+    setExpClientName("");
+    setExpProof("");
+    setExpProofImage("");
+  };
+
+  const handleStartEdit = (tx: any) => {
+    setEditingTx(tx);
+    setSelectedPreviewTx(null);
+    if (tx.type === "Money In") {
+      setRevVenture(tx.venture?._id || tx.venture || "");
+      setRevAmount(tx.amount.toString());
+      setRevCategory(tx.category || "Client Payment");
+      setRevReason(tx.reason || "");
+      setRevMethod(tx.paymentMethod || "Bank Transfer");
+      setRevDesc(tx.description || "");
+      setRevClientName(tx.clientName || "");
+      setRevProof(tx.proof || "");
+      setRevProofImage(tx.proofImage || "");
+      setRevenueOpen(true);
+    } else if (tx.type === "Money Out") {
+      setExpVenture(tx.venture?._id || tx.venture || "");
+      setExpAmount(tx.amount.toString());
+      setExpCategory(tx.category || "Operating Expense");
+      setExpReason(tx.reason || "");
+      setExpMethod(tx.paymentMethod || "Bank Transfer");
+      setExpDesc(tx.description || "");
+      setExpClientName(tx.clientName || "");
+      setExpProof(tx.proof || "");
+      setExpProofImage(tx.proofImage || "");
+      setExpenseOpen(true);
+    }
+  };
 
   // Revenue Form
   const [revVenture, setRevVenture] = useState("");
@@ -99,7 +158,7 @@ function FinancePage() {
       toast.error("Venture and Amount are required.");
       return;
     }
-    addRevenueMutation.mutate({
+    const payload = {
       venture: revVenture,
       amount: Number(revAmount),
       category: revCategory,
@@ -109,22 +168,35 @@ function FinancePage() {
       clientName: revClientName,
       proof: revProof,
       proofImage: revProofImage
-    }, {
-      onSuccess: () => {
-        toast.success("Revenue recorded successfully");
-        setRevenueOpen(false);
-        setRevVenture("");
-        setRevAmount("");
-        setRevReason("");
-        setRevDesc("");
-        setRevClientName("");
-        setRevProof("");
-        setRevProofImage("");
-      },
-      onError: (err: any) => {
-        toast.error(err.response?.data?.message || "Failed to record revenue");
-      }
-    });
+    };
+
+    if (editingTx) {
+      updateTxMutation.mutate({
+        id: editingTx._id,
+        ...payload
+      }, {
+        onSuccess: () => {
+          toast.success("Revenue updated successfully");
+          setRevenueOpen(false);
+          setEditingTx(null);
+          resetRevenueForm();
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to update revenue");
+        }
+      });
+    } else {
+      addRevenueMutation.mutate(payload, {
+        onSuccess: () => {
+          toast.success("Revenue recorded successfully");
+          setRevenueOpen(false);
+          resetRevenueForm();
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to record revenue");
+        }
+      });
+    }
   };
 
   const handleRecordExpenseSubmit = (e: React.FormEvent) => {
@@ -133,7 +205,7 @@ function FinancePage() {
       toast.error("Venture and Amount are required.");
       return;
     }
-    recordExpenseMutation.mutate({
+    const payload = {
       venture: expVenture,
       amount: Number(expAmount),
       category: expCategory,
@@ -143,22 +215,35 @@ function FinancePage() {
       clientName: expClientName,
       proof: expProof,
       proofImage: expProofImage
-    }, {
-      onSuccess: () => {
-        toast.success("Expense recorded successfully");
-        setExpenseOpen(false);
-        setExpVenture("");
-        setExpAmount("");
-        setExpReason("");
-        setExpDesc("");
-        setExpClientName("");
-        setExpProof("");
-        setExpProofImage("");
-      },
-      onError: (err: any) => {
-        toast.error(err.response?.data?.message || "Failed to record expense");
-      }
-    });
+    };
+
+    if (editingTx) {
+      updateTxMutation.mutate({
+        id: editingTx._id,
+        ...payload
+      }, {
+        onSuccess: () => {
+          toast.success("Expense updated successfully");
+          setExpenseOpen(false);
+          setEditingTx(null);
+          resetExpenseForm();
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to update expense");
+        }
+      });
+    } else {
+      recordExpenseMutation.mutate(payload, {
+        onSuccess: () => {
+          toast.success("Expense recorded successfully");
+          setExpenseOpen(false);
+          resetExpenseForm();
+        },
+        onError: (err: any) => {
+          toast.error(err.response?.data?.message || "Failed to record expense");
+        }
+      });
+    }
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {
@@ -206,22 +291,22 @@ function FinancePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <SectionCard title="Company Wallet" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-foreground">
-              ₹0
+              ₹{isSummaryLoading ? "..." : (summary?.walletBalance ?? 0).toLocaleString()}
             </div>
           </SectionCard>
           <SectionCard title="Money In Today" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-emerald-500 font-extrabold">
-              ₹0
+              ₹{isSummaryLoading ? "..." : (summary?.inToday ?? 0).toLocaleString()}
             </div>
           </SectionCard>
           <SectionCard title="Money Out Today" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-rose-500 font-extrabold">
-              ₹0
+              ₹{isSummaryLoading ? "..." : (summary?.outToday ?? 0).toLocaleString()}
             </div>
           </SectionCard>
           <SectionCard title="Monthly Profit" className="bg-card">
             <div className="text-3xl font-bold mt-2 text-indigo-500 font-extrabold">
-              ₹0
+              ₹{isSummaryLoading ? "..." : (summary?.monthProfit ?? 0).toLocaleString()}
             </div>
           </SectionCard>
         </div>
@@ -282,10 +367,13 @@ function FinancePage() {
                     <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-right">
-                      {tx.proofImage ? (
-                        <a href={tx.proofImage} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">
+                      {(tx.type === 'Money In' || tx.type === 'Money Out' || tx.proofImage) ? (
+                        <button
+                          onClick={() => setSelectedPreviewTx(tx)}
+                          className="text-xs text-blue-500 hover:underline cursor-pointer bg-transparent border-0 p-0"
+                        >
                           Review Invoice
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
@@ -299,10 +387,10 @@ function FinancePage() {
       </SectionCard>
 
       {/* Dialog for Add Revenue */}
-      <Dialog open={revenueOpen} onOpenChange={setRevenueOpen}>
+      <Dialog open={revenueOpen} onOpenChange={(open) => { setRevenueOpen(open); if (!open) { setEditingTx(null); resetRevenueForm(); } }}>
         <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Add Revenue (Money In)</DialogTitle>
+            <DialogTitle>{editingTx ? "Edit Revenue" : "Add Revenue (Money In)"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Record incoming client payments or funding.
             </DialogDescription>
@@ -385,9 +473,9 @@ function FinancePage() {
               <Textarea id="revDsc" value={revDesc} onChange={(e) => setRevDesc(e.target.value)} className="mt-1.5 rounded-xl border-border" />
             </div>
             <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setRevenueOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={addRevenueMutation.isPending} className="rounded-xl gradient-emerald text-white">
-                {addRevenueMutation.isPending ? "Recording..." : "Record Revenue"}
+              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => { setRevenueOpen(false); setEditingTx(null); resetRevenueForm(); }}>Cancel</Button>
+              <Button type="submit" disabled={addRevenueMutation.isPending || updateTxMutation.isPending} className="rounded-xl gradient-emerald text-white">
+                {addRevenueMutation.isPending || updateTxMutation.isPending ? "Saving..." : editingTx ? "Save Changes" : "Record Revenue"}
               </Button>
             </DialogFooter>
           </form>
@@ -395,10 +483,10 @@ function FinancePage() {
       </Dialog>
 
       {/* Dialog for Record Expense */}
-      <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
+      <Dialog open={expenseOpen} onOpenChange={(open) => { setExpenseOpen(open); if (!open) { setEditingTx(null); resetExpenseForm(); } }}>
         <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Record Expense (Money Out)</DialogTitle>
+            <DialogTitle>{editingTx ? "Edit Expense" : "Record Expense (Money Out)"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Record business outflows, operating costs, or salary payouts.
             </DialogDescription>
@@ -482,9 +570,9 @@ function FinancePage() {
               <Textarea id="expDsc" value={expDesc} onChange={(e) => setExpDesc(e.target.value)} className="mt-1.5 rounded-xl border-border" />
             </div>
             <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => setExpenseOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={recordExpenseMutation.isPending} className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] font-semibold">
-                {recordExpenseMutation.isPending ? "Recording..." : "Record Expense"}
+              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => { setExpenseOpen(false); setEditingTx(null); resetExpenseForm(); }}>Cancel</Button>
+              <Button type="submit" disabled={recordExpenseMutation.isPending || updateTxMutation.isPending} className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] font-semibold">
+                {recordExpenseMutation.isPending || updateTxMutation.isPending ? "Saving..." : editingTx ? "Save Changes" : "Record Expense"}
               </Button>
             </DialogFooter>
           </form>
@@ -554,6 +642,12 @@ function FinancePage() {
           </form>
         </DialogContent>
       </Dialog>
+      <InvoicePreviewModal
+        isOpen={selectedPreviewTx !== null}
+        onClose={() => setSelectedPreviewTx(null)}
+        transaction={selectedPreviewTx}
+        onEdit={handleStartEdit}
+      />
       <Toaster />
     </PageContainer>
   );

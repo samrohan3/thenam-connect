@@ -36,11 +36,17 @@ const getSummary = asyncHandler(async (req, res) => {
     return success(res, summary, 'Finance summary retrieved successfully');
 });
 
+const updateTransaction = asyncHandler(async (req, res) => {
+    const tx = await financeService.updateTransactionById(req.params.id, req.body, req.user.id);
+    return success(res, tx, 'Transaction updated successfully');
+});
+
 module.exports = {
     addRevenue,
     recordExpense,
     transferFunds,
     getTransactions,
     getTransaction,
-    getSummary
+    getSummary,
+    updateTransaction
 };

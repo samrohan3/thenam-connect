@@ -12,6 +12,7 @@ router.post('/transfer', canAccess('finance', 'create'), financeController.trans
 router.get('/summary', canAccess('finance', 'read'), financeController.getSummary);
 
 router.route('/transactions/:id')
-    .get(canAccess('finance', 'read'), financeController.getTransaction);
+    .get(canAccess('finance', 'read'), financeController.getTransaction)
+    .patch(canAccess('finance', 'update'), financeController.updateTransaction);
 
 module.exports = router;

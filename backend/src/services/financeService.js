@@ -237,11 +237,112 @@ const getFinanceSummary = async () => {
     };
 };
 
+const updateTransactionById = async (id, data, userId) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const tx = await Transaction.findById(id).session(session);
+        if (!tx) throw new AppError('Transaction not found', 404);
+
+        const oldAmount = tx.amount;
+        const newAmount = data.amount !== undefined ? Number(data.amount) : oldAmount;
+        const amountDiff = newAmount - oldAmount;
+
+        // If amount changed and transaction is tied to a wallet, adjust balance
+        if (amountDiff !== 0 && tx.wallet) {
+            const wallet = await Wallet.findById(tx.wallet).session(session);
+            if (wallet) {
+                if (tx.type === 'Money In') {
+                    wallet.balance += amountDiff;
+                    wallet.totalRevenue += amountDiff;
+                } else if (tx.type === 'Money Out') {
+                    // Check if new amount exceeds current balance
+                    if (wallet.balance < amountDiff) {
+                        throw new AppError('Insufficient wallet balance to increase expense', 400);
+                    }
+                    wallet.balance -= amountDiff;
+                    wallet.totalExpense += amountDiff;
+                } else if (tx.type === 'Transfer') {
+                    if (tx.transferDirection === 'out') {
+                        if (wallet.balance < amountDiff) {
+                            throw new AppError('Insufficient wallet balance to increase transfer', 400);
+                        }
+                        wallet.balance -= amountDiff;
+                    } else if (tx.transferDirection === 'in') {
+                        wallet.balance += amountDiff;
+                    }
+                }
+                await wallet.save({ session });
+            }
+        }
+
+        // Handle paired transaction if it's a Transfer
+        if (tx.type === 'Transfer' && tx.pairedTransaction) {
+            const pairedTx = await Transaction.findById(tx.pairedTransaction).session(session);
+            if (pairedTx) {
+                const pairedWallet = await Wallet.findById(pairedTx.wallet).session(session);
+                if (pairedWallet && amountDiff !== 0) {
+                    if (pairedTx.transferDirection === 'out') {
+                        if (pairedWallet.balance < amountDiff) {
+                            throw new AppError('Insufficient balance in paired wallet', 400);
+                        }
+                        pairedWallet.balance -= amountDiff;
+                    } else if (pairedTx.transferDirection === 'in') {
+                        pairedWallet.balance += amountDiff;
+                    }
+                    await pairedWallet.save({ session });
+                }
+                
+                // Update amount and description on the paired transaction
+                pairedTx.amount = newAmount;
+                if (data.reason !== undefined) pairedTx.reason = data.reason;
+                if (data.description !== undefined) pairedTx.description = data.description;
+                if (data.status !== undefined) pairedTx.status = data.status;
+                if (data.date !== undefined) pairedTx.date = data.date;
+                await pairedTx.save({ session });
+            }
+        }
+
+        // Apply fields to transaction
+        const updatableFields = [
+            'amount', 'reason', 'description', 'source', 'destination', 
+            'paymentMethod', 'category', 'status', 'remarks', 'clientName', 
+            'proof', 'proofImage', 'attachment', 'date'
+        ];
+        
+        updatableFields.forEach(field => {
+            if (data[field] !== undefined) {
+                tx[field] = field === 'amount' ? Number(data[field]) : data[field];
+            }
+        });
+
+        await tx.save({ session });
+
+        await session.commitTransaction();
+
+        await logActivity({
+            userId,
+            action: 'Updated Transaction',
+            entity: 'Transaction',
+            entityId: tx._id,
+            entityName: tx.referenceNumber
+        });
+
+        return tx;
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        session.endSession();
+    }
+};
+
 module.exports = {
     createMoneyIn,
     createMoneyOut,
     createTransfer,
     listTransactions,
     getTransactionById,
-    getFinanceSummary
+    getFinanceSummary,
+    updateTransactionById
 };

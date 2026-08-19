@@ -65,6 +65,20 @@ export const useTransferFunds = () => {
   });
 };
 
+export const useUpdateTransaction = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; [key: string]: any }) => {
+      const res = await api.patch(`/finance/transactions/${id}`, data);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+    }
+  });
+};
+
 // --- Dashboard Hooks ---
 
 export const useDashboardStats = () => {
