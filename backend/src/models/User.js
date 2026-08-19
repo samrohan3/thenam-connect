@@ -111,9 +111,22 @@ const userSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+// Virtual: role alias for roles[0] to support single role compatibility
+userSchema.virtual('role')
+  .get(function () {
+    return this.roles && this.roles.length > 0 ? this.roles[0] : 'developer';
+  })
+  .set(function (value) {
+    if (value) {
+      this.roles = [value];
+    }
+  });
 
 userSchema.index({ roles: 1 });
 userSchema.index({ status: 1 });

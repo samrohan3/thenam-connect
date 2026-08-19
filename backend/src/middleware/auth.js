@@ -39,6 +39,10 @@ const protect = async (req, res, next) => {
       }
 
       req.userRole = normalizeRole(primaryRole);
+      
+      // Attach the active/resolved role onto req.user so downstream services can access it
+      req.user.userRole = req.userRole;
+
       return next();
     } catch (error) {
       console.error('Auth verification error:', error);

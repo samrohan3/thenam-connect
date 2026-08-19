@@ -13,6 +13,13 @@ const Team = require('../models/Team');
 
 const MANAGEMENT_ROLES = ['admin', 'founder', 'manager', 'super admin'];
 
+const getUserRole = (user) => {
+  if (!user) return 'developer';
+  if (user.userRole) return user.userRole;
+  if (user.roles && user.roles.length > 0) return normalizeRole(user.roles[0]);
+  return normalizeRole(user.role || '');
+};
+
 /**
  * Send notification alerts to assigned employee, their team members, and the project manager (team lead)
  */
@@ -106,7 +113,7 @@ const sendTaskAssignmentNotifications = async (task) => {
  */
 const verifyTaskAccess = async (task, user) => {
   if (!user) return;
-  const userRole = normalizeRole(user.role || '');
+  const userRole = getUserRole(user);
   if (MANAGEMENT_ROLES.includes(userRole)) return; // Admin/Founder/Manager always allowed
 
   const userIdStr = String(user._id || user.id);
@@ -153,7 +160,7 @@ const listTasks = async (filter = {}, user = null) => {
   let query = { ...filter };
 
   if (user) {
-    const userRole = normalizeRole(user.role || '');
+    const userRole = getUserRole(user);
     if (!MANAGEMENT_ROLES.includes(userRole)) {
       const emp = await Employee.findOne({ email: (user.email || '').toLowerCase() });
       const empId = emp ? emp._id : null;
@@ -231,7 +238,7 @@ const updateTaskStatus = async (id, status, user = null) => {
   if (!task) throw new AppError('Task not found', 404);
 
   const userId = user ? (user._id || user.id) : null;
-  const userRole = user ? normalizeRole(user.role || '') : 'developer';
+  const userRole = getUserRole(user);
   const isManagement = MANAGEMENT_ROLES.includes(userRole);
 
   // ── Security enforcement: block non-management from completing tasks ──────
@@ -287,7 +294,7 @@ const submitForCompletion = async (id, user) => {
   const task = await Task.findById(id);
   if (!task) throw new AppError('Task not found', 404);
 
-  const userRole = normalizeRole(user.role || '');
+  const userRole = getUserRole(user);
   if (MANAGEMENT_ROLES.includes(userRole)) {
     // Admin can approve directly — redirect them to approve endpoint
     throw new AppError('Admins can directly approve/complete tasks. Use the approve endpoint.', 400);
@@ -353,7 +360,7 @@ const submitForCompletion = async (id, user) => {
  * Admin approves task completion.
  */
 const approveCompletion = async (id, user) => {
-  const userRole = normalizeRole(user.role || '');
+  const userRole = getUserRole(user);
   if (!MANAGEMENT_ROLES.includes(userRole)) {
     throw new AppError('Forbidden: Only Admin/Founder/Manager can approve task completion.', 403);
   }
@@ -428,7 +435,7 @@ const approveCompletion = async (id, user) => {
  * Admin denies task completion with a reason.
  */
 const denyCompletion = async (id, user, reason) => {
-  const userRole = normalizeRole(user.role || '');
+  const userRole = getUserRole(user);
   if (!MANAGEMENT_ROLES.includes(userRole)) {
     throw new AppError('Forbidden: Only Admin/Founder/Manager can deny task completion.', 403);
   }
