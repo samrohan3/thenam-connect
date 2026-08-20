@@ -32,6 +32,8 @@ const notificationSchema = new mongoose.Schema(
         'employee_joined',
         'reward_given',
         'transfer_completed',
+        'revert_request',
+        'revert_processed',
         'general'
       ],
       default: 'general',

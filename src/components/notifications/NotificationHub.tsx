@@ -15,9 +15,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Megaphone, ClipboardList, CheckCircle2, XCircle, Bell } from "lucide-react";
+import { X, Megaphone, ClipboardList, CheckCircle2, XCircle, Bell, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useActiveAnnouncements, useApproveTaskCompletion, useDenyTaskCompletion } from "@/lib/api-hooks";
+import { useActiveAnnouncements, useApproveTaskCompletion, useDenyTaskCompletion, useApproveRevertRequest, useDenyRevertRequest } from "@/lib/api-hooks";
 import { getSocket } from "@/routes/__root";
 import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ import { toast } from "sonner";
 
 interface NotifCard {
   id: string;              // announcement ID or task ID
-  type: "announcement" | "task_assigned" | "task_approval" | "task_approved" | "task_denied";
+  type: "announcement" | "task_assigned" | "task_approval" | "task_approved" | "task_denied" | "revert_request";
   title: string;
   body: string;
   by?: string;
@@ -36,6 +36,15 @@ interface NotifCard {
   taskTitle?: string;
   submittedByName?: string;
   denialReason?: string;
+  // revert-specific
+  revertRequestId?: string;
+  transactionId?: string;
+  transactionReference?: string;
+  requestedByName?: string;
+  amount?: number;
+  txType?: string;
+  ventureName?: string;
+  reason?: string;
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -179,11 +188,41 @@ export function NotificationHub() {
       });
     };
 
+    const handleRevertRequest = (data: any) => {
+      if (!isManagement) return;
+      addCard({
+        id: data.id || `revert_request_${data.revertRequestId}_${Date.now()}`,
+        type: "revert_request",
+        title: "Transaction Revert Request",
+        body: `Transaction ${data.transactionReference} submitted for revert by ${data.requestedByName}.`,
+        transactionReference: data.transactionReference,
+        requestedByName: data.requestedByName,
+        amount: data.amount,
+        txType: data.txType,
+        ventureName: data.ventureName,
+        reason: data.reason,
+        revertRequestId: data.revertRequestId,
+        transactionId: data.transactionId
+      });
+    };
+
+    const handleRevertProcessed = (data: any) => {
+      addCard({
+        id: data.id || `revert_processed_${Date.now()}`,
+        type: data.status === "approved" ? "task_approved" : "task_denied",
+        title: data.title,
+        body: data.body,
+        denialReason: data.denialReason
+      });
+    };
+
     socket.on("announcement:new", handleAnnouncementNew);
     socket.on("task:assigned", handleTaskAssigned);
     socket.on("task:approval_request", handleTaskApprovalRequest);
     socket.on("task:approved", handleTaskApproved);
     socket.on("task:denied", handleTaskDenied);
+    socket.on("revert_request", handleRevertRequest);
+    socket.on("revert_processed", handleRevertProcessed);
 
     return () => {
       socket.off("announcement:new", handleAnnouncementNew);
@@ -191,6 +230,8 @@ export function NotificationHub() {
       socket.off("task:approval_request", handleTaskApprovalRequest);
       socket.off("task:approved", handleTaskApproved);
       socket.off("task:denied", handleTaskDenied);
+      socket.off("revert_request", handleRevertRequest);
+      socket.off("revert_processed", handleRevertProcessed);
     };
   }, [isManagement]);
 
@@ -223,6 +264,27 @@ export function NotificationHub() {
     navigate({ to: "/tasks" });
   };
 
+  const approveRevert = useApproveRevertRequest();
+  const denyRevert = useDenyRevertRequest();
+
+  const handleApproveRevert = (card: NotifCard) => {
+    if (!card.revertRequestId) return;
+    approveRevert.mutate(card.revertRequestId, {
+      onSuccess: () => {
+        toast.success(`Revert request approved!`);
+        removeCard(card.id);
+      },
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.message || "Failed to approve revert request");
+      }
+    });
+  };
+
+  const handleVerifyRevert = (card: NotifCard) => {
+    removeCard(card.id);
+    navigate({ to: "/finance" });
+  };
+
   const handleApproveTask = (card: NotifCard) => {
     if (!card.taskId) return;
     approveTask.mutate(card.taskId as string, {
@@ -242,20 +304,39 @@ export function NotificationHub() {
   };
 
   const handleConfirmDeny = () => {
-    if (!denyDialogCard?.taskId || !denyReason.trim()) return;
-    denyTask.mutate(
-      { taskId: denyDialogCard.taskId as string, reason: denyReason },
-      {
-        onSuccess: () => {
-          toast.success("Task completion denied.");
-          removeCard(denyDialogCard.id);
-          setDenyDialogCard(null);
-        },
-        onError: (err: any) => {
-          toast.error(err?.response?.data?.message || "Failed to deny task");
+    if (!denyDialogCard || !denyReason.trim()) return;
+
+    if (denyDialogCard.type === "revert_request") {
+      if (!denyDialogCard.revertRequestId) return;
+      denyRevert.mutate(
+        { id: denyDialogCard.revertRequestId, denialReason: denyReason },
+        {
+          onSuccess: () => {
+            toast.success("Revert request denied.");
+            removeCard(denyDialogCard.id);
+            setDenyDialogCard(null);
+          },
+          onError: (err: any) => {
+            toast.error(err?.response?.data?.message || "Failed to deny revert request");
+          }
         }
-      }
-    );
+      );
+    } else {
+      if (!denyDialogCard.taskId) return;
+      denyTask.mutate(
+        { taskId: denyDialogCard.taskId as string, reason: denyReason },
+        {
+          onSuccess: () => {
+            toast.success("Task completion denied.");
+            removeCard(denyDialogCard.id);
+            setDenyDialogCard(null);
+          },
+          onError: (err: any) => {
+            toast.error(err?.response?.data?.message || "Failed to deny task");
+          }
+        }
+      );
+    }
   };
 
   return (
@@ -273,13 +354,25 @@ export function NotificationHub() {
                   ? handleDismissAnnouncement(card, hideUntilTomorrow)
                   : removeCard(card.id)
               }
-              onView={() =>
-                card.type === "announcement" ? handleViewAnnouncement(card) : handleViewTask(card)
-              }
-              onApprove={() => handleApproveTask(card)}
+              onView={() => {
+                if (card.type === "revert_request") {
+                  handleVerifyRevert(card);
+                } else if (card.type === "announcement") {
+                  handleViewAnnouncement(card);
+                } else {
+                  handleViewTask(card);
+                }
+              }}
+              onApprove={() => {
+                if (card.type === "revert_request") {
+                  handleApproveRevert(card);
+                } else {
+                  handleApproveTask(card);
+                }
+              }}
               onDeny={() => handleDenyTask(card)}
-              isApproving={approveTask.isPending}
-              isDenying={denyTask.isPending}
+              isApproving={card.type === "revert_request" ? approveRevert.isPending : approveTask.isPending}
+              isDenying={card.type === "revert_request" ? denyRevert.isPending : denyTask.isPending}
             />
           ))}
         </AnimatePresence>
@@ -364,7 +457,8 @@ function NotifCardComponent({
     task_assigned: <ClipboardList className="h-4 w-4" />,
     task_approval: <Bell className="h-4 w-4" />,
     task_approved: <CheckCircle2 className="h-4 w-4" />,
-    task_denied: <XCircle className="h-4 w-4" />
+    task_denied: <XCircle className="h-4 w-4" />,
+    revert_request: <AlertTriangle className="h-4 w-4" />
   };
 
   const colorMap = {
@@ -372,7 +466,8 @@ function NotifCardComponent({
     task_assigned: "from-blue-500/20 to-cyan-500/10 border-blue-500/30",
     task_approval: "from-amber-500/20 to-yellow-500/10 border-amber-500/30",
     task_approved: "from-green-500/20 to-emerald-500/10 border-green-500/30",
-    task_denied: "from-rose-500/20 to-red-500/10 border-rose-500/30"
+    task_denied: "from-rose-500/20 to-red-500/10 border-rose-500/30",
+    revert_request: "from-amber-500/20 to-orange-500/10 border-amber-500/30"
   };
 
   const iconColorMap = {
@@ -380,7 +475,8 @@ function NotifCardComponent({
     task_assigned: "text-blue-400 bg-blue-500/15",
     task_approval: "text-amber-400 bg-amber-500/15",
     task_approved: "text-green-400 bg-green-500/15",
-    task_denied: "text-rose-400 bg-rose-500/15"
+    task_denied: "text-rose-400 bg-rose-500/15",
+    revert_request: "text-amber-400 bg-amber-500/15"
   };
 
   return (
@@ -425,6 +521,37 @@ function NotifCardComponent({
             <p className="text-xs text-rose-300">
               <span className="font-semibold">Reason:</span> {card.denialReason}
             </p>
+          </div>
+        )}
+        {/* Revert request details */}
+        {card.type === "revert_request" && isManagement && (
+          <div className="text-[11px] space-y-1.5 my-2.5 bg-background/50 p-2.5 rounded-xl border border-border/40 text-foreground/90 font-medium">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Transaction:</span>
+              <span className="font-bold font-mono">{card.transactionReference}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Requested by:</span>
+              <span>{card.requestedByName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Amount:</span>
+              <span className="font-bold">₹{card.amount?.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Type:</span>
+              <span className={card.txType === "Money In" ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                {card.txType}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Venture:</span>
+              <span className="truncate max-w-[150px]">{card.ventureName}</span>
+            </div>
+            <div className="mt-1.5 pt-1.5 border-t border-border/40">
+              <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider mb-0.5">Reason:</span>
+              <p className="text-foreground font-normal leading-normal italic">"{card.reason}"</p>
+            </div>
           </div>
         )}
 
@@ -499,6 +626,36 @@ function NotifCardComponent({
               onClick={onView}
             >
               Verify
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={onApprove}
+              disabled={isApproving}
+            >
+              {isApproving ? "..." : "Approve"}
+            </Button>
+          </div>
+        )}
+
+        {card.type === "revert_request" && isManagement && (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1 h-7 text-xs rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20"
+              onClick={onDeny}
+              disabled={isDenying}
+            >
+              Deny
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1 h-7 text-xs rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/10 border border-border"
+              onClick={onView}
+            >
+              Verify Transaction
             </Button>
             <Button
               size="sm"

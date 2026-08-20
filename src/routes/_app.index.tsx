@@ -9,7 +9,8 @@ import {
   Plus,
   Wallet,
   UserPlus,
-  Layers
+  Layers,
+  Clock
 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { StatCard } from "@/components/ui-ext/stat-card";
@@ -17,7 +18,7 @@ import { SectionCard } from "@/components/ui-ext/section-card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { useDashboardStats, useDashboardCharts, useRecentActivities } from "@/lib/api-hooks";
+import { useDashboardStats, useDashboardCharts, useRecentActivities, useProjects } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
 import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
 import { RoleGuard } from "@/components/rbac/RoleGuard";
@@ -51,6 +52,11 @@ function DashboardPage() {
   const { data: stats, isLoading: isStatsLoading } = useDashboardStats();
   const { data: chartData, isLoading: isChartsLoading } = useDashboardCharts();
   const { data: recentActivities, isLoading: isActivitiesLoading } = useRecentActivities();
+  const { data: projects, isLoading: isProjectsLoading } = useProjects();
+
+  const upcoming = projects?.filter((p: any) => p.status === 'Planning') || [];
+  const pending = projects?.filter((p: any) => ['In Progress', 'Active', 'Testing', 'On Hold', 'Paused'].includes(p.status)) || [];
+  const completed = projects?.filter((p: any) => p.status === 'Completed') || [];
 
   const canSeeFinance = hasPermission(user?.role, "finance", "read");
   const canSeeVentures = canAccessRoute(user?.role, "/ventures");
@@ -143,6 +149,122 @@ function DashboardPage() {
           />
         )}
       </div>
+
+      {/* Projects Status Overview */}
+      {canSeeProjects && (
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SectionCard title="Upcoming Projects" description="Scheduled to start or planning stage">
+            {isProjectsLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">Loading projects...</div>
+            ) : upcoming.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">No upcoming projects.</div>
+            ) : (
+              <div className="space-y-3 mt-3">
+                {upcoming.slice(0, 5).map((p: any) => (
+                  <div key={p._id} className="p-3.5 rounded-xl bg-card border border-border flex flex-col gap-2 shadow-sm hover:shadow transition-shadow">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-foreground truncate" title={p.name}>{p.name}</h4>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{p.venture?.name || "No Venture"}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] font-mono shrink-0 text-amber-500 bg-amber-500/5 border-amber-500/20">
+                        #{p._id ? p._id.substring(p._id.length - 6).toUpperCase() : "PROJ"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground pt-1.5 border-t border-border/40">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Due: {p.deadline ? new Date(p.deadline).toLocaleDateString() : "No Date"}</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-amber-500/10 text-amber-500 uppercase tracking-wider">
+                        {p.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Pending Projects" description="Active or currently in development">
+            {isProjectsLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">Loading projects...</div>
+            ) : pending.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">No pending projects.</div>
+            ) : (
+              <div className="space-y-3 mt-3">
+                {pending.slice(0, 5).map((p: any) => (
+                  <div key={p._id} className="p-3.5 rounded-xl bg-card border border-border flex flex-col gap-2 shadow-sm hover:shadow transition-shadow">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-foreground truncate" title={p.name}>{p.name}</h4>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{p.venture?.name || "No Venture"}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] font-mono shrink-0 text-blue-500 bg-blue-500/5 border-blue-500/20">
+                        #{p._id ? p._id.substring(p._id.length - 6).toUpperCase() : "PROJ"}
+                      </Badge>
+                    </div>
+                    {/* Progress Bar */}
+                    {p.progress !== undefined && (
+                      <div className="space-y-1 mt-1">
+                        <div className="flex justify-between text-[9px] text-muted-foreground">
+                          <span>Progress</span>
+                          <span>{p.progress}%</span>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-1 overflow-hidden">
+                          <div className="bg-blue-500 h-full rounded-full" style={{ width: `${p.progress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground pt-1.5 border-t border-border/40">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Due: {p.deadline ? new Date(p.deadline).toLocaleDateString() : "No Date"}</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-blue-500/10 text-blue-500 uppercase tracking-wider">
+                        {p.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Completed Projects" description="Successfully finalized deliverables">
+            {isProjectsLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">Loading projects...</div>
+            ) : completed.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">No completed projects.</div>
+            ) : (
+              <div className="space-y-3 mt-3">
+                {completed.slice(0, 5).map((p: any) => (
+                  <div key={p._id} className="p-3.5 rounded-xl bg-card border border-border flex flex-col gap-2 shadow-sm hover:shadow transition-shadow">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-foreground truncate" title={p.name}>{p.name}</h4>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{p.venture?.name || "No Venture"}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] font-mono shrink-0 text-emerald-500 bg-emerald-500/5 border-emerald-500/20">
+                        #{p._id ? p._id.substring(p._id.length - 6).toUpperCase() : "PROJ"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground pt-1.5 border-t border-border/40">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Finished: {p.deadline ? new Date(p.deadline).toLocaleDateString() : "No Date"}</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-emerald-500/10 text-emerald-500 uppercase tracking-wider">
+                        Completed
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
 
       {/* Team Distribution & Recent Joinings Widgets */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">

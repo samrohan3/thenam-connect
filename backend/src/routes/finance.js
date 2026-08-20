@@ -15,4 +15,11 @@ router.route('/transactions/:id')
     .get(canAccess('finance', 'read'), financeController.getTransaction)
     .patch(canAccess('finance', 'update'), financeController.updateTransaction);
 
+// Revert and Revert Request routes
+router.post('/transactions/:id/revert', canAccess('finance', 'delete'), financeController.revertTransaction);
+router.post('/transactions/:id/revert-request', canAccess('finance', 'create'), financeController.createRevertRequest);
+router.get('/revert-requests', canAccess('finance', 'read'), financeController.getRevertRequests);
+router.post('/revert-requests/:id/approve', canAccess('finance', 'delete'), financeController.approveRevertRequest);
+router.post('/revert-requests/:id/deny', canAccess('finance', 'delete'), financeController.denyRevertRequest);
+
 module.exports = router;

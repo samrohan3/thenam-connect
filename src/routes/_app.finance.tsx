@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRightLeft, Minus, Plus } from "lucide-react";
+import { ArrowRightLeft, Minus, Plus, AlertTriangle, Loader2 } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { SectionCard } from "@/components/ui-ext/section-card";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds, useVentures, useUpdateTransaction } from "@/lib/api-hooks";
+import { useFinanceSummary, useTransactions, useAddRevenue, useRecordExpense, useTransferFunds, useVentures, useUpdateTransaction, useDirectRevertTransaction, useCreateRevertRequest } from "@/lib/api-hooks";
 import { useAuthStore } from "@/store/authStore";
+import api from "@/lib/api";
 import { InvoicePreviewModal } from "@/components/finance/InvoicePreviewModal";
 import { canAccessRoute, hasPermission, normalizeRole } from "@/lib/permissions";
 import { AccessDenied } from "@/components/rbac/AccessDenied";
@@ -48,11 +49,23 @@ function FinancePage() {
   const addRevenueMutation = useAddRevenue();
   const recordExpenseMutation = useRecordExpense();
   const transferMutation = useTransferFunds();
+  const directRevertMutation = useDirectRevertTransaction();
+  const requestRevertMutation = useCreateRevertRequest();
+  const isAdmin = role === "admin" || role === "founder";
 
   // Modal Open States
   const [revenueOpen, setRevenueOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+
+  // Revert states
+  const [revertingTx, setRevertingTx] = useState<any>(null);
+  const [revertReason, setRevertReason] = useState("");
+  const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
+
+  // Validation state
+  const [showRevErrors, setShowRevErrors] = useState(false);
+  const [showExpErrors, setShowExpErrors] = useState(false);
 
   // Preview & Edit states
   const [selectedPreviewTx, setSelectedPreviewTx] = useState<any>(null);
@@ -70,6 +83,7 @@ function FinancePage() {
     setRevClientName("");
     setRevProof("");
     setRevProofImage("");
+    setShowRevErrors(false);
   };
 
   const resetExpenseForm = () => {
@@ -82,6 +96,39 @@ function FinancePage() {
     setExpClientName("");
     setExpProof("");
     setExpProofImage("");
+    setShowExpErrors(false);
+  };
+
+  const hasUnsavedRevenueData = () => {
+    return !!(revVenture || revAmount || revClientName || revReason || revProof || revProofImage || revDesc);
+  };
+
+  const handleRevenueCloseRequest = (open: boolean) => {
+    if (!open) {
+      if (hasUnsavedRevenueData()) {
+        const confirmClose = window.confirm("You have unsaved changes. Are you sure you want to discard them?");
+        if (!confirmClose) return;
+      }
+      setRevenueOpen(false);
+      setEditingTx(null);
+      resetRevenueForm();
+    }
+  };
+
+  const hasUnsavedExpenseData = () => {
+    return !!(expVenture || expAmount || expClientName || expReason || expProof || expProofImage || expDesc);
+  };
+
+  const handleExpenseCloseRequest = (open: boolean) => {
+    if (!open) {
+      if (hasUnsavedExpenseData()) {
+        const confirmClose = window.confirm("You have unsaved changes. Are you sure you want to discard them?");
+        if (!confirmClose) return;
+      }
+      setExpenseOpen(false);
+      setEditingTx(null);
+      resetExpenseForm();
+    }
   };
 
   const handleStartEdit = (tx: any) => {
@@ -141,21 +188,37 @@ function FinancePage() {
   const [trnReason, setTrnReason] = useState("Inter-venture transfer");
   const [trnDesc, setTrnDesc] = useState("");
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setBase64: (val: string) => void) => {
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, setUrl: (val: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setUploadingFile(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await api.post("/upload/single", formData, {
+          headers: { "Content-Type": "multipart/form-data" }
+        });
+        const url = res.data.data.url;
+        const apiBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        const hostUrl = apiBase.replace('/api', '');
+        setUrl(`${hostUrl}${url}`);
+        toast.success("File uploaded successfully");
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to upload file to backend");
+      } finally {
+        setUploadingFile(false);
+      }
     }
   };
 
   const handleAddRevenueSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!revVenture || !revAmount) {
-      toast.error("Venture and Amount are required.");
+    setShowRevErrors(true);
+    if (!revVenture || !revAmount || Number(revAmount) <= 0) {
+      toast.error("Please resolve the validation errors first.");
       return;
     }
     const payload = {
@@ -201,8 +264,9 @@ function FinancePage() {
 
   const handleRecordExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expVenture || !expAmount) {
-      toast.error("Venture and Amount are required.");
+    setShowExpErrors(true);
+    if (!expVenture || !expAmount || Number(expAmount) <= 0) {
+      toast.error("Please resolve the validation errors first.");
       return;
     }
     const payload = {
@@ -366,7 +430,7 @@ function FinancePage() {
                     <td className="px-4 py-3 text-muted-foreground text-xs">{tx.category || "General"}</td>
                     <td className="px-4 py-3 font-bold text-foreground">₹{tx.amount.toLocaleString()}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right flex items-center justify-end gap-2.5 h-12">
                       {(tx.type === 'Money In' || tx.type === 'Money Out' || tx.proofImage) ? (
                         <button
                           onClick={() => setSelectedPreviewTx(tx)}
@@ -376,6 +440,21 @@ function FinancePage() {
                         </button>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                      {tx.status !== 'Cancelled' && (
+                        <>
+                          <span className="text-muted-foreground/30">|</span>
+                          <button
+                            onClick={() => {
+                              setRevertingTx(tx);
+                              setRevertReason("");
+                              setRevertConfirmOpen(true);
+                            }}
+                            className="text-xs text-rose-500 hover:underline cursor-pointer bg-transparent border-0 p-0 font-medium"
+                          >
+                            Revert
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -387,8 +466,8 @@ function FinancePage() {
       </SectionCard>
 
       {/* Dialog for Add Revenue */}
-      <Dialog open={revenueOpen} onOpenChange={(open) => { setRevenueOpen(open); if (!open) { setEditingTx(null); resetRevenueForm(); } }}>
-        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
+      <Dialog open={revenueOpen} onOpenChange={handleRevenueCloseRequest}>
+        <DialogContent className="max-w-3xl bg-background text-foreground border-border rounded-2xl p-6">
           <DialogHeader>
             <DialogTitle>{editingTx ? "Edit Revenue" : "Add Revenue (Money In)"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -396,9 +475,9 @@ function FinancePage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddRevenueSubmit} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="revVent">Venture</Label>
+                <Label htmlFor="revVent" className="text-xs font-semibold">Venture <span className="text-rose-500">*</span></Label>
                 <select
                   id="revVent"
                   value={revVenture}
@@ -411,15 +490,32 @@ function FinancePage() {
                     <option key={v._id} value={v._id}>{v.name}</option>
                   ))}
                 </select>
+                {showRevErrors && !revVenture && (
+                  <p className="text-[10px] text-rose-500 mt-1">Venture selection is required</p>
+                )}
               </div>
               <div>
-                <Label htmlFor="revAmt">Amount (₹)</Label>
-                <Input id="revAmt" type="number" value={revAmount} onChange={(e) => setRevAmount(e.target.value)} placeholder="1000" className="mt-1.5 rounded-xl border-border" required />
+                <Label htmlFor="revAmt" className="text-xs font-semibold">Amount (₹) <span className="text-rose-500">*</span></Label>
+                <Input
+                  id="revAmt"
+                  type="number"
+                  value={revAmount}
+                  onChange={(e) => setRevAmount(e.target.value)}
+                  placeholder="1000"
+                  className="mt-1.5 rounded-xl border-border h-10"
+                  required
+                />
+                {showRevErrors && (!revAmount || Number(revAmount) <= 0) ? (
+                  <p className="text-[10px] text-rose-500 mt-1">Amount must be greater than 0</p>
+                ) : (
+                  Number(revAmount) > 0 && (
+                    <p className="text-[10px] text-emerald-500 mt-1">Formatted: ₹{Number(revAmount).toLocaleString()}</p>
+                  )
+                )}
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
               <div>
-                <Label htmlFor="revCat">Category</Label>
+                <Label htmlFor="revCat" className="text-xs font-semibold">Category</Label>
                 <select
                   id="revCat"
                   value={revCategory}
@@ -434,7 +530,7 @@ function FinancePage() {
                 </select>
               </div>
               <div>
-                <Label htmlFor="revMet">Method</Label>
+                <Label htmlFor="revMet" className="text-xs font-semibold">Method</Label>
                 <select
                   id="revMet"
                   value={revMethod}
@@ -449,32 +545,60 @@ function FinancePage() {
                 </select>
               </div>
             </div>
-            <div>
-              <Label htmlFor="revClient">Client Name</Label>
-              <Input id="revClient" value={revClientName} onChange={(e) => setRevClientName(e.target.value)} placeholder="Acme Corp / John Doe" className="mt-1.5 rounded-xl border-border" />
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="revClient" className="text-xs font-semibold">Client Name</Label>
+                <Input id="revClient" value={revClientName} onChange={(e) => setRevClientName(e.target.value)} placeholder="Acme Corp / John Doe" className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="revReas" className="text-xs font-semibold">Reason</Label>
+                <Input id="revReas" value={revReason} onChange={(e) => setRevReason(e.target.value)} placeholder="Invoice #2026-01" className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="revProof" className="text-xs font-semibold">Proof of Amount / Note</Label>
+                <Input id="revProof" value={revProof} onChange={(e) => setRevProof(e.target.value)} placeholder="Receipt / Bank Reference No." className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="revProofImg" className="text-xs font-semibold">Proof Image Upload</Label>
+                <div className="mt-1.5 flex items-center gap-4">
+                  <Input
+                    id="revProofImg"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, setRevProofImage)}
+                    disabled={uploadingFile}
+                    className="rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer flex-1 h-10"
+                  />
+                  {uploadingFile && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 animate-pulse">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Uploading...
+                    </div>
+                  )}
+                </div>
+                {revProofImage && (
+                  <div className="mt-3 relative w-32 h-20 group border border-border/80 rounded-xl overflow-hidden shadow-sm">
+                    <img src={revProofImage} alt="Proof preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setRevProofImage("")}
+                      className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-black/80 rounded-full text-white text-[10px] transition-colors"
+                      title="Remove image"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="revDsc" className="text-xs font-semibold">Notes</Label>
+                <Textarea id="revDsc" value={revDesc} onChange={(e) => setRevDesc(e.target.value)} className="mt-1.5 rounded-xl border-border min-h-[80px]" />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="revReas">Reason</Label>
-              <Input id="revReas" value={revReason} onChange={(e) => setRevReason(e.target.value)} placeholder="Invoice #2026-01" className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <div>
-              <Label htmlFor="revProof">Proof of Amount / Note</Label>
-              <Input id="revProof" value={revProof} onChange={(e) => setRevProof(e.target.value)} placeholder="Receipt / Bank Reference No." className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <div>
-              <Label htmlFor="revProofImg">Proof Image Upload</Label>
-              <Input id="revProofImg" type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setRevProofImage)} className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer" />
-              {revProofImage && (
-                <img src={revProofImage} alt="Proof preview" className="mt-2 h-16 w-auto rounded-lg border border-border object-cover" />
-              )}
-            </div>
-            <div>
-              <Label htmlFor="revDsc">Notes</Label>
-              <Textarea id="revDsc" value={revDesc} onChange={(e) => setRevDesc(e.target.value)} className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => { setRevenueOpen(false); setEditingTx(null); resetRevenueForm(); }}>Cancel</Button>
-              <Button type="submit" disabled={addRevenueMutation.isPending || updateTxMutation.isPending} className="rounded-xl gradient-emerald text-white">
+
+            <DialogFooter className="pt-4 border-t border-border/40 gap-2">
+              <Button type="button" variant="ghost" className="rounded-xl h-10" onClick={() => handleRevenueCloseRequest(false)}>Cancel</Button>
+              <Button type="submit" disabled={uploadingFile || addRevenueMutation.isPending || updateTxMutation.isPending} className="rounded-xl h-10 gradient-emerald text-white font-semibold shadow px-5">
                 {addRevenueMutation.isPending || updateTxMutation.isPending ? "Saving..." : editingTx ? "Save Changes" : "Record Revenue"}
               </Button>
             </DialogFooter>
@@ -483,8 +607,8 @@ function FinancePage() {
       </Dialog>
 
       {/* Dialog for Record Expense */}
-      <Dialog open={expenseOpen} onOpenChange={(open) => { setExpenseOpen(open); if (!open) { setEditingTx(null); resetExpenseForm(); } }}>
-        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl">
+      <Dialog open={expenseOpen} onOpenChange={handleExpenseCloseRequest}>
+        <DialogContent className="max-w-3xl bg-background text-foreground border-border rounded-2xl p-6">
           <DialogHeader>
             <DialogTitle>{editingTx ? "Edit Expense" : "Record Expense (Money Out)"}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -492,9 +616,9 @@ function FinancePage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleRecordExpenseSubmit} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="expVent">Venture</Label>
+                <Label htmlFor="expVent" className="text-xs font-semibold">Venture <span className="text-rose-500">*</span></Label>
                 <select
                   id="expVent"
                   value={expVenture}
@@ -507,15 +631,32 @@ function FinancePage() {
                     <option key={v._id} value={v._id}>{v.name}</option>
                   ))}
                 </select>
+                {showExpErrors && !expVenture && (
+                  <p className="text-[10px] text-rose-500 mt-1">Venture selection is required</p>
+                )}
               </div>
               <div>
-                <Label htmlFor="expAmt">Amount (₹)</Label>
-                <Input id="expAmt" type="number" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="500" className="mt-1.5 rounded-xl border-border" required />
+                <Label htmlFor="expAmt" className="text-xs font-semibold">Amount (₹) <span className="text-rose-500">*</span></Label>
+                <Input
+                  id="expAmt"
+                  type="number"
+                  value={expAmount}
+                  onChange={(e) => setExpAmount(e.target.value)}
+                  placeholder="500"
+                  className="mt-1.5 rounded-xl border-border h-10"
+                  required
+                />
+                {showExpErrors && (!expAmount || Number(expAmount) <= 0) ? (
+                  <p className="text-[10px] text-rose-500 mt-1">Amount must be greater than 0</p>
+                ) : (
+                  Number(expAmount) > 0 && (
+                    <p className="text-[10px] text-rose-500 mt-1">Formatted: ₹{Number(expAmount).toLocaleString()}</p>
+                  )
+                )}
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
               <div>
-                <Label htmlFor="expCat">Category</Label>
+                <Label htmlFor="expCat" className="text-xs font-semibold">Category</Label>
                 <select
                   id="expCat"
                   value={expCategory}
@@ -531,7 +672,7 @@ function FinancePage() {
                 </select>
               </div>
               <div>
-                <Label htmlFor="expMet">Method</Label>
+                <Label htmlFor="expMet" className="text-xs font-semibold">Method</Label>
                 <select
                   id="expMet"
                   value={expMethod}
@@ -546,36 +687,177 @@ function FinancePage() {
                 </select>
               </div>
             </div>
-            <div>
-              <Label htmlFor="expClient">Client / Vendor Name</Label>
-              <Input id="expClient" value={expClientName} onChange={(e) => setExpClientName(e.target.value)} placeholder="Vendor / Service Provider" className="mt-1.5 rounded-xl border-border" />
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="expClient" className="text-xs font-semibold">Client / Vendor Name</Label>
+                <Input id="expClient" value={expClientName} onChange={(e) => setExpClientName(e.target.value)} placeholder="Vendor / Service Provider" className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="expReas" className="text-xs font-semibold">Reason</Label>
+                <Input id="expReas" value={expReason} onChange={(e) => setExpReason(e.target.value)} placeholder="Office Supplies" className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="expProof" className="text-xs font-semibold">Proof of Amount / Note</Label>
+                <Input id="expProof" value={expProof} onChange={(e) => setExpProof(e.target.value)} placeholder="Invoice / Bill Reference No." className="mt-1.5 rounded-xl border-border h-10" />
+              </div>
+              <div>
+                <Label htmlFor="expProofImg" className="text-xs font-semibold">Proof Image Upload</Label>
+                <div className="mt-1.5 flex items-center gap-4">
+                  <Input
+                    id="expProofImg"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, setExpProofImage)}
+                    disabled={uploadingFile}
+                    className="rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer flex-1 h-10"
+                  />
+                  {uploadingFile && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 animate-pulse">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Uploading...
+                    </div>
+                  )}
+                </div>
+                {expProofImage && (
+                  <div className="mt-3 relative w-32 h-20 group border border-border/80 rounded-xl overflow-hidden shadow-sm">
+                    <img src={expProofImage} alt="Proof preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setExpProofImage("")}
+                      className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-black/80 rounded-full text-white text-[10px] transition-colors"
+                      title="Remove image"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="expDsc" className="text-xs font-semibold">Notes</Label>
+                <Textarea id="expDsc" value={expDesc} onChange={(e) => setExpDesc(e.target.value)} className="mt-1.5 rounded-xl border-border min-h-[80px]" />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="expReas">Reason</Label>
-              <Input id="expReas" value={expReason} onChange={(e) => setExpReason(e.target.value)} placeholder="Office Supplies" className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <div>
-              <Label htmlFor="expProof">Proof of Amount / Note</Label>
-              <Input id="expProof" value={expProof} onChange={(e) => setExpProof(e.target.value)} placeholder="Invoice / Bill Reference No." className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <div>
-              <Label htmlFor="expProofImg">Proof Image Upload</Label>
-              <Input id="expProofImg" type="file" accept="image/*" onChange={(e) => handleFileUpload(e, setExpProofImage)} className="mt-1.5 rounded-xl border-border file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary/20 file:text-primary cursor-pointer" />
-              {expProofImage && (
-                <img src={expProofImage} alt="Proof preview" className="mt-2 h-16 w-auto rounded-lg border border-border object-cover" />
-              )}
-            </div>
-            <div>
-              <Label htmlFor="expDsc">Notes</Label>
-              <Textarea id="expDsc" value={expDesc} onChange={(e) => setExpDesc(e.target.value)} className="mt-1.5 rounded-xl border-border" />
-            </div>
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="ghost" className="rounded-xl" onClick={() => { setExpenseOpen(false); setEditingTx(null); resetExpenseForm(); }}>Cancel</Button>
-              <Button type="submit" disabled={recordExpenseMutation.isPending || updateTxMutation.isPending} className="rounded-xl gradient-gold text-[color:var(--gold-foreground)] font-semibold">
+
+            <DialogFooter className="pt-4 border-t border-border/40 gap-2">
+              <Button type="button" variant="ghost" className="rounded-xl h-10" onClick={() => handleExpenseCloseRequest(false)}>Cancel</Button>
+              <Button type="submit" disabled={uploadingFile || recordExpenseMutation.isPending || updateTxMutation.isPending} className="rounded-xl h-10 gradient-gold text-[color:var(--gold-foreground)] font-semibold shadow px-5">
                 {recordExpenseMutation.isPending || updateTxMutation.isPending ? "Saving..." : editingTx ? "Save Changes" : "Record Expense"}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog for Reverting Transaction */}
+      <Dialog open={revertConfirmOpen} onOpenChange={setRevertConfirmOpen}>
+        <DialogContent className="max-w-md bg-background text-foreground border-border rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle>Confirm Transaction Reversion</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {isAdmin 
+                ? "This will cancel the transaction and immediately update account balances." 
+                : "This will submit a revert request to the Admin for approval."}
+            </DialogDescription>
+          </DialogHeader>
+          {revertingTx && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-muted/50 border border-border/60 rounded-xl space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Reference:</span>
+                  <span className="font-bold font-mono">{revertingTx.referenceNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Type:</span>
+                  <span className={`font-semibold ${revertingTx.type === 'Money In' ? 'text-emerald-500' : 'text-rose-500'}`}>{revertingTx.type}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount:</span>
+                  <span className="font-bold">₹{revertingTx.amount?.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Venture:</span>
+                  <span className="font-semibold text-primary">{revertingTx.venture?.name || "None"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Category:</span>
+                  <span>{revertingTx.category || "General"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Date:</span>
+                  <span>{new Date(revertingTx.date).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              {/* Warning Alert */}
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-xl flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <span className="font-bold">WARNING:</span> This operation will alter financial records. The transaction status will be marked as Cancelled, and the venture wallet balances will be recalculated.
+                </div>
+              </div>
+
+              {/* Reason Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="revertReason" className="text-xs font-semibold text-foreground/90">Reason for Reverting <span className="text-rose-500">*</span></Label>
+                <Input
+                  id="revertReason"
+                  placeholder="Enter specific reason for reversion..."
+                  value={revertReason}
+                  onChange={(e) => setRevertReason(e.target.value)}
+                  className="rounded-xl border-border text-sm"
+                  required
+                />
+              </div>
+
+              <DialogFooter className="pt-2 gap-2 sm:gap-0">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  className="rounded-xl h-10 text-xs font-semibold" 
+                  onClick={() => { setRevertConfirmOpen(false); setRevertingTx(null); }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="button" 
+                  className="rounded-xl h-10 text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700"
+                  disabled={!revertReason.trim() || directRevertMutation.isPending || requestRevertMutation.isPending}
+                  onClick={() => {
+                    const payload = { id: revertingTx._id, reason: revertReason };
+                    if (isAdmin) {
+                      directRevertMutation.mutate(payload, {
+                        onSuccess: () => {
+                          toast.success("Transaction reverted successfully.");
+                          setRevertConfirmOpen(false);
+                          setRevertingTx(null);
+                        },
+                        onError: (err: any) => {
+                          toast.error(err.response?.data?.message || "Failed to revert transaction.");
+                        }
+                      });
+                    } else {
+                      requestRevertMutation.mutate(payload, {
+                        onSuccess: () => {
+                          toast.success("Revert request sent to Admin.");
+                          setRevertConfirmOpen(false);
+                          setRevertingTx(null);
+                        },
+                        onError: (err: any) => {
+                          toast.error(err.response?.data?.message || "Failed to send revert request.");
+                        }
+                      });
+                    }
+                  }}
+                >
+                  {directRevertMutation.isPending || requestRevertMutation.isPending 
+                    ? "Processing..." 
+                    : isAdmin 
+                    ? "Confirm Revert" 
+                    : "Submit Revert Request"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

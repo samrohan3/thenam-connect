@@ -4,6 +4,9 @@ const Venture = require('../models/Venture');
 const AppError = require('../utils/AppError');
 const { logActivity } = require('./activityService');
 const mongoose = require('mongoose');
+const TransactionRevertRequest = require('../models/TransactionRevertRequest');
+const User = require('../models/User');
+const { createNotification } = require('./notificationService');
 
 // Helper to generate TX reference
 const generateRef = async () => {
@@ -337,6 +340,278 @@ const updateTransactionById = async (id, data, userId) => {
     }
 };
 
+const revertTransactionLogic = async (id, reason, userId, session) => {
+    const tx = await Transaction.findById(id).session(session);
+    if (!tx) throw new AppError('Transaction not found', 404);
+
+    if (tx.status === 'Cancelled') {
+        throw new AppError('Transaction is already reverted/cancelled', 400);
+    }
+
+    const oldAmount = tx.amount;
+
+    // Adjust wallet balance
+    if (tx.wallet) {
+        const wallet = await Wallet.findById(tx.wallet).session(session);
+        if (wallet) {
+            if (tx.type === 'Money In') {
+                wallet.balance -= oldAmount;
+                wallet.totalRevenue -= oldAmount;
+            } else if (tx.type === 'Money Out') {
+                wallet.balance += oldAmount;
+                wallet.totalExpense -= oldAmount;
+            } else if (tx.type === 'Transfer') {
+                if (tx.transferDirection === 'out') {
+                    wallet.balance += oldAmount;
+                } else if (tx.transferDirection === 'in') {
+                    if (wallet.balance < oldAmount) {
+                        throw new AppError('Cannot revert: destination wallet has insufficient balance', 400);
+                    }
+                    wallet.balance -= oldAmount;
+                }
+            }
+            await wallet.save({ session });
+        }
+    }
+
+    // Adjust paired transaction if it's a Transfer
+    if (tx.type === 'Transfer' && tx.pairedTransaction) {
+        const pairedTx = await Transaction.findById(tx.pairedTransaction).session(session);
+        if (pairedTx && pairedTx.status !== 'Cancelled') {
+            const pairedWallet = await Wallet.findById(pairedTx.wallet).session(session);
+            if (pairedWallet) {
+                if (pairedTx.transferDirection === 'out') {
+                    pairedWallet.balance += oldAmount;
+                } else if (pairedTx.transferDirection === 'in') {
+                    if (pairedWallet.balance < oldAmount) {
+                        throw new AppError('Cannot revert: destination wallet of paired transfer has insufficient balance', 400);
+                    }
+                    pairedWallet.balance -= oldAmount;
+                }
+                await pairedWallet.save({ session });
+            }
+            pairedTx.status = 'Cancelled';
+            pairedTx.remarks = `Reverted: ${reason}`;
+            await pairedTx.save({ session });
+        }
+    }
+
+    tx.status = 'Cancelled';
+    tx.remarks = `Reverted: ${reason}`;
+    await tx.save({ session });
+
+    await logActivity({
+        userId,
+        action: 'Reverted Transaction',
+        entity: 'Transaction',
+        entityId: tx._id,
+        entityName: tx.referenceNumber
+    });
+
+    return tx;
+};
+
+const directRevertTransaction = async (transactionId, reason, userId) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const tx = await revertTransactionLogic(transactionId, reason, userId, session);
+        await session.commitTransaction();
+        return tx;
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        session.endSession();
+    }
+};
+
+const createRevertRequest = async (transactionId, reason, userId, userName) => {
+    const tx = await Transaction.findById(transactionId);
+    if (!tx) throw new AppError('Transaction not found', 404);
+
+    if (tx.status === 'Cancelled') {
+        throw new AppError('Transaction is already reverted/cancelled', 400);
+    }
+
+    // Check if there's already a pending request for this transaction
+    const existing = await TransactionRevertRequest.findOne({ 
+        transaction: transactionId, 
+        status: 'pending' 
+    });
+    if (existing) {
+        throw new AppError('A pending revert request already exists for this transaction', 400);
+    }
+
+    const request = await TransactionRevertRequest.create({
+        transaction: transactionId,
+        transactionReference: tx.referenceNumber,
+        requestedBy: userId,
+        requestedByName: userName,
+        reason
+    });
+
+    // Send notifications to all Admin/Founder users
+    const admins = await User.find({ role: { $in: ['admin', 'founder'] } });
+    const populatedTx = await Transaction.findById(transactionId).populate('venture');
+
+    for (const admin of admins) {
+        await createNotification({
+            userId: admin._id,
+            title: 'Transaction Revert Request',
+            message: `Transaction ${tx.referenceNumber} (₹${tx.amount}) submitted for revert by ${userName}.`,
+            type: 'revert_request',
+            entityType: 'Transaction',
+            entityId: tx._id,
+            icon: 'bell',
+            metadata: {
+                requestId: request._id,
+                transactionId: tx._id,
+                transactionReference: tx.referenceNumber,
+                requestedByName: userName,
+                amount: tx.amount,
+                txType: tx.type,
+                ventureName: populatedTx?.venture?.name || 'Venture',
+                reason
+            }
+        });
+        
+        // Emit Socket.IO event to active admins in real-time
+        try {
+            const { emitToUser } = require('./socketService');
+            emitToUser(admin._id.toString(), 'revert_request', {
+                id: `revert_request_${request._id}_${Date.now()}`,
+                type: 'revert_request',
+                title: 'Transaction Revert Request',
+                body: `Transaction ${tx.referenceNumber} submitted for revert by ${userName}.`,
+                transactionReference: tx.referenceNumber,
+                requestedByName: userName,
+                amount: tx.amount,
+                txType: tx.type,
+                ventureName: populatedTx?.venture?.name || 'Venture',
+                reason,
+                revertRequestId: request._id,
+                transactionId: tx._id
+            });
+        } catch (e) {
+            console.error('[socket] Failed to emit revert_request', e);
+        }
+    }
+
+    return request;
+};
+
+const listRevertRequests = async (filter = {}) => {
+    return TransactionRevertRequest.find(filter)
+        .populate('transaction')
+        .populate('requestedBy', 'name email')
+        .populate('processedBy', 'name email')
+        .sort({ createdAt: -1 })
+        .lean();
+};
+
+const approveRevertRequest = async (requestId, userId, userName) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const request = await TransactionRevertRequest.findById(requestId).session(session);
+        if (!request) throw new AppError('Revert request not found', 404);
+        if (request.status !== 'pending') {
+            throw new AppError(`Request has already been processed (current status: ${request.status})`, 400);
+        }
+
+        const tx = await revertTransactionLogic(request.transaction, request.reason, userId, session);
+
+        request.status = 'approved';
+        request.processedBy = userId;
+        request.processedByName = userName;
+        request.processedAt = new Date();
+        await request.save({ session });
+
+        // Notify requesting user
+        await createNotification({
+            userId: request.requestedBy,
+            title: 'Revert Request Approved ✓',
+            message: `Your revert request for transaction ${request.transactionReference} was approved by ${userName}.`,
+            type: 'revert_processed',
+            entityType: 'Transaction',
+            entityId: request.transaction,
+            icon: 'bell',
+            metadata: {
+                requestId: request._id,
+                status: 'approved',
+                transactionReference: request.transactionReference
+            }
+        });
+
+        try {
+            const { emitToUser } = require('./socketService');
+            emitToUser(request.requestedBy.toString(), 'revert_processed', {
+                id: `revert_processed_${request._id}_${Date.now()}`,
+                status: 'approved',
+                title: 'Revert Request Approved ✓',
+                body: `Your revert request for transaction ${request.transactionReference} was approved by ${userName}.`
+            });
+        } catch (e) {
+            console.error('[socket] Failed to emit approve', e);
+        }
+
+        await session.commitTransaction();
+        return { request, tx };
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        session.endSession();
+    }
+};
+
+const denyRevertRequest = async (requestId, userId, userName, denialReason) => {
+    const request = await TransactionRevertRequest.findById(requestId);
+    if (!request) throw new AppError('Revert request not found', 404);
+    if (request.status !== 'pending') {
+        throw new AppError(`Request has already been processed (current status: ${request.status})`, 400);
+    }
+
+    request.status = 'denied';
+    request.processedBy = userId;
+    request.processedByName = userName;
+    request.processedAt = new Date();
+    request.denialReason = denialReason || 'No reason provided';
+    await request.save();
+
+    await createNotification({
+        userId: request.requestedBy,
+        title: 'Revert Request Denied ✗',
+        message: `Your revert request for transaction ${request.transactionReference} was denied by ${userName}. Reason: ${request.denialReason}`,
+        type: 'revert_processed',
+        entityType: 'Transaction',
+        entityId: request.transaction,
+        icon: 'bell',
+        metadata: {
+            requestId: request._id,
+            status: 'denied',
+            transactionReference: request.transactionReference,
+            denialReason: request.denialReason
+        }
+    });
+
+    try {
+        const { emitToUser } = require('./socketService');
+        emitToUser(request.requestedBy.toString(), 'revert_processed', {
+            id: `revert_processed_${request._id}_${Date.now()}`,
+            status: 'denied',
+            title: 'Revert Request Denied ✗',
+            body: `Your revert request for transaction ${request.transactionReference} was denied by ${userName}.`,
+            denialReason: request.denialReason
+        });
+    } catch (e) {
+        console.error('[socket] Failed to emit deny', e);
+    }
+
+    return request;
+};
+
 module.exports = {
     createMoneyIn,
     createMoneyOut,
@@ -344,5 +619,10 @@ module.exports = {
     listTransactions,
     getTransactionById,
     getFinanceSummary,
-    updateTransactionById
+    updateTransactionById,
+    directRevertTransaction,
+    createRevertRequest,
+    listRevertRequests,
+    approveRevertRequest,
+    denyRevertRequest
 };

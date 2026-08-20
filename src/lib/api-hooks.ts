@@ -846,7 +846,7 @@ export const useDirectMessages = (userId?: string) => {
       return res.data.data;
     },
     enabled: !!userId,
-    staleTime: 0, // Always fetch fresh — socket-driven invalidation is the control plane
+    staleTime: 0,
   });
 };
 
@@ -862,3 +862,73 @@ export const useMarkMessageRead = () => {
     }
   });
 };
+
+export const useDirectRevertTransaction = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await api.post(`/finance/transactions/${id}/revert`, { reason });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    }
+  });
+};
+
+export const useCreateRevertRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await api.post(`/finance/transactions/${id}/revert-request`, { reason });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revert-requests'] });
+    }
+  });
+};
+
+export const useRevertRequests = (status?: string) => {
+  return useQuery({
+    queryKey: ['revert-requests', status],
+    queryFn: async () => {
+      const res = await api.get('/finance/revert-requests', { params: { status } });
+      return res.data.data;
+    }
+  });
+};
+
+export const useApproveRevertRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post(`/finance/revert-requests/${id}/approve`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revert-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    }
+  });
+};
+
+export const useDenyRevertRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, denialReason }: { id: string; denialReason: string }) => {
+      const res = await api.post(`/finance/revert-requests/${id}/deny`, { denialReason });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revert-requests'] });
+    }
+  });
+};
+
+
+
